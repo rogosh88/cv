@@ -1,4 +1,5 @@
-FROM node:22-alpine
+# Obraz z przeglądarką Chromium (wersja musi odpowiadać wersji playwright w package.json)
+FROM mcr.microsoft.com/playwright:v1.63.0-noble
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev

@@ -169,7 +169,14 @@
 
         <div class="card">
           <h3>Strona z aukcjami – logowanie</h3>
-          <label>Adres strony logowania<input name="auctionSite.loginUrl" type="url" placeholder="https://…/login" /></label>
+          <label>Adres strony logowania<input name="auctionSite.loginUrl" type="url" placeholder="https://app.bestcarprice.ch/login" /></label>
+          <label>Sposób logowania
+            <select name="auctionSite.mode">
+              <option value="auto">automatycznie (bestcarprice → ukryta przeglądarka)</option>
+              <option value="browser">ukryta przeglądarka (strony-aplikacje)</option>
+              <option value="html">prosty formularz</option>
+            </select>
+          </label>
           <div class="row">
             <label>Login / e-mail<input name="auctionSite.username" autocomplete="off" /></label>
             <label>Hasło<input name="auctionSite.password" type="password" autocomplete="new-password" /></label>

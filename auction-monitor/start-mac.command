@@ -6,10 +6,9 @@ if ! command -v node >/dev/null 2>&1; then
   read -p "Naciśnij Enter, aby zamknąć..."
   exit 1
 fi
-if [ ! -d node_modules ]; then
-  echo "Instaluję zależności (tylko za pierwszym razem)..."
-  npm install --omit=dev
-fi
+echo "Sprawdzam zależności (pierwsze uruchomienie pobiera ok. 150 MB i trwa kilka minut)..."
+npm install --omit=dev --no-audit --no-fund
+npx playwright install chromium
 echo
 echo "Monitor aukcji startuje: http://localhost:3000"
 echo "Nie zamykaj tego okna – zamknięcie zatrzymuje monitor."

@@ -8,10 +8,9 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-if not exist node_modules (
-  echo Instaluje zaleznosci - tylko za pierwszym razem...
-  call npm install --omit=dev
-)
+echo Sprawdzam zaleznosci (pierwsze uruchomienie pobiera ok. 150 MB i trwa kilka minut)...
+call npm install --omit=dev --no-audit --no-fund
+call npx playwright install chromium
 echo.
 echo Monitor aukcji startuje: http://localhost:3000
 echo Nie zamykaj tego okna - zamkniecie zatrzymuje monitor.

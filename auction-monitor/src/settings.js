@@ -47,7 +47,8 @@ const DEFAULT_SETTINGS = {
   // Strona z aukcjami (adapter ogólny) – opcjonalne selektory CSS i ciasteczko sesji
   auctionSite: {
     // Logowanie: adres strony logowania + login i hasło (formularz wypełniany automatycznie)
-    loginUrl: '',
+    loginUrl: 'https://app.bestcarprice.ch/login',
+    mode: 'auto', // 'auto' (bestcarprice → ukryta przeglądarka), 'browser', 'html'
     username: '',
     password: '',
     cookie: '', // alternatywnie: ciasteczko sesji skopiowane z przeglądarki

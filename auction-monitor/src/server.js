@@ -39,7 +39,7 @@ async function importText({ text, url }) {
     }
   } else {
     if (!parsed.endsAt) throw new Error('Nie znaleziono daty zakończenia aukcji („Inserat läuft bis”)');
-    auction = { id: store.id(), status: 'active', createdAt: now, priceUpdatedAt: now, autoRefresh: false, ...parsed };
+    auction = { id: store.id(), status: 'active', createdAt: now, priceUpdatedAt: now, autoRefresh: true, ...parsed };
   }
   auction.lastImportAt = now;
   await monitor.evaluate(auction, getSettings());
@@ -118,7 +118,6 @@ app.get('/api/auction-site/status', (req, res) => res.json(sessionStatus()));
 app.post(
   '/api/auction-site/test-login',
   wrap(async (req, res) => {
-    resetSession();
     await login(getSettings().auctionSite, { force: true });
     res.json({ ok: true, status: sessionStatus() });
   })

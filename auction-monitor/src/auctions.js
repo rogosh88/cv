@@ -129,15 +129,11 @@ async function login(site, { force = false } = {}) {
   lastLoginAttemptAt = Date.now();
   jar.clear();
   try {
-    const page = await request(site.loginUrl);
-    const form = buildLoginForm(page.text, page.url, site.username, site.password);
-    const after = await request(form.action, {
-      method: form.method,
-      body: form.body,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: page.url },
-    });
-    if (after.res.status === 429 || after.res.status === 403) throw new Error(`Strona odrzuciła logowanie (HTTP ${after.res.status})`);
-    if (looksLikeLoginPage(after.text)) throw new Error('Logowanie nieudane – sprawdź login i hasło');
+    if (useBrowser(site)) {
+      await require('./browser').login(site);
+    } else {
+      await formLogin(site);
+    }
   } catch (err) {
     block(err.message);
     throw err;
@@ -147,6 +143,30 @@ async function login(site, { force = false } = {}) {
   blockReason = '';
   persist();
   return true;
+}
+
+/**
+ * Strony-aplikacje (formularz i treść budowane skryptami) obsługujemy ukrytą przeglądarką.
+ * mode: 'auto' (bestcarprice → przeglądarka), 'browser', 'html'
+ */
+function useBrowser(site) {
+  if (site.mode === 'browser') return true;
+  if (site.mode === 'html') return false;
+  return /bestcarprice\.ch/i.test(`${site.loginUrl || ''}`);
+}
+
+async function formLogin(site) {
+  {
+    const page = await request(site.loginUrl);
+    const form = buildLoginForm(page.text, page.url, site.username, site.password);
+    const after = await request(form.action, {
+      method: form.method,
+      body: form.body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: page.url },
+    });
+    if (after.res.status === 429 || after.res.status === 403) throw new Error(`Strona odrzuciła logowanie (HTTP ${after.res.status})`);
+    if (looksLikeLoginPage(after.text)) throw new Error('Logowanie nieudane – sprawdź login i hasło');
+  }
 }
 
 function looksLikeLoginPage(html) {
@@ -259,6 +279,28 @@ function zurichToDate(y, m, d, hh, mm, ss) {
 
 async function refreshAuction(auction, siteSettings) {
   if (!auction.url) throw new Error('Brak adresu URL aukcji');
+  if (useBrowser(siteSettings) || /bestcarprice\.ch/i.test(auction.url)) {
+    const canLogin = siteSettings.loginUrl && siteSettings.username && siteSettings.password;
+    const page = await require('./browser').fetchPage(auction.url, siteSettings, async () => {
+      if (!canLogin) throw new Error('Strona wymaga logowania – uzupełnij dane w ustawieniach');
+      await login(siteSettings);
+    });
+    if (canLogin && !loggedInAt) {
+      loggedInAt = Date.now(); // sesja z zapisanego stanu przeglądarki jest ważna
+      persist();
+    }
+    const { parseBestCarPriceText } = require('./sites/bestcarprice');
+    const p = parseBestCarPriceText(page.text, auction.url);
+    const fromHtml = parseAuctionHtml(page.html, siteSettings);
+    const data = {
+      price: p.currentPrice ?? fromHtml.price,
+      endsAt: p.endsAt ?? fromHtml.endsAt,
+      currency: 'CHF',
+      sellerAddress: p.sellerAddress ?? fromHtml.sellerAddress,
+    };
+    if (data.price == null) throw new Error('Nie znaleziono ceny na stronie aukcji (Höchstgebot)');
+    return data;
+  }
   const html = await fetchAuctionPage(auction.url, siteSettings);
   const data = parseAuctionHtml(html, siteSettings);
   if (data.price == null) throw new Error('Nie znaleziono ceny na stronie aukcji (ustaw selektor CSS w ustawieniach)');
@@ -266,6 +308,7 @@ async function refreshAuction(auction, siteSettings) {
 }
 
 function resetSession() {
+  require('./browser').resetBrowserSession().catch(() => {});
   jar.clear();
   loggedInAt = 0;
   lastLoginAttemptAt = 0;
@@ -274,4 +317,4 @@ function resetSession() {
   persist();
 }
 
-module.exports = { refreshAuction, resetSession, sessionStatus, parseAuctionHtml, parseDate, login, buildLoginForm, looksLikeLoginPage };
+module.exports = { useBrowser, refreshAuction, resetSession, sessionStatus, parseAuctionHtml, parseDate, login, buildLoginForm, looksLikeLoginPage };
