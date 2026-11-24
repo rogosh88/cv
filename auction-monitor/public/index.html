@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Monitor aukcji CH</title>
+  <meta name="theme-color" content="#0f766e" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Aukcje CH" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Aukcje CH → PL</h1>
+    <span id="fx" class="muted small"></span>
+  </header>
+
+  <main>
+    <!-- AUKCJE -->
+    <section id="view-auctions" class="view active">
+      <div class="toolbar">
+        <label class="small"><input type="checkbox" id="show-ended" /> pokaż zakończone</label>
+        <button class="ghost" id="reload">Odśwież</button>
+      </div>
+      <div id="auction-list" class="list"></div>
+      <p id="empty" class="muted center hidden">Brak aukcji. Dodaj pierwszą w zakładce „Dodaj”.</p>
+    </section>
+
+    <!-- DODAJ / EDYTUJ -->
+    <section id="view-add" class="view">
+      <h2 id="form-title">Dodaj aukcję</h2>
+      <form id="auction-form" class="card form">
+        <input type="hidden" name="id" />
+        <label>Link do aukcji<input name="url" type="url" placeholder="https://…" /></label>
+        <div class="row">
+          <label>Marka*<input name="make" required placeholder="BMW" /></label>
+          <label>Model<input name="model" placeholder="Seria 3" /></label>
+        </div>
+        <div class="row">
+          <label>Rok<input name="year" type="number" inputmode="numeric" min="1980" max="2030" /></label>
+          <label>Przebieg (km)<input name="mileageKm" type="number" inputmode="numeric" /></label>
+        </div>
+        <div class="row">
+          <label>Paliwo
+            <select name="fuel">
+              <option value="">—</option><option>benzyna</option><option>diesel</option><option>hybryda</option><option>elektryczny</option><option>lpg</option>
+            </select>
+          </label>
+          <label>Pojemność (cm³)<input name="engineCc" type="number" inputmode="numeric" placeholder="1995" /></label>
+        </div>
+        <div class="row">
+          <label>Aktualna cena*<input name="currentPrice" type="number" inputmode="decimal" required /></label>
+          <label>Waluta
+            <select name="currency"><option>CHF</option><option>EUR</option><option>PLN</option></select>
+          </label>
+        </div>
+        <label>Koniec aukcji* (czas lokalny)<input name="endsAt" type="datetime-local" required /></label>
+        <label>Tytuł (opcjonalnie)<input name="title" placeholder="np. BMW 320d Touring M-Pakiet" /></label>
+
+        <details>
+          <summary>Wycena w Polsce – zaawansowane</summary>
+          <label>Własny link wyszukiwania Otomoto<input name="otomotoUrl" type="url" placeholder="https://www.otomoto.pl/osobowe/…" /></label>
+          <label>Fraza wyszukiwania OLX<input name="olxQuery" placeholder="bmw 320d" /></label>
+          <label>Fraza wyszukiwania Facebook<input name="fbQuery" placeholder="bmw 320d" /></label>
+          <label>Ceny z Facebook Marketplace / inne (PLN, oddzielone przecinkami)<input name="manualPrices" placeholder="72000, 69500, 75900" /></label>
+          <label>Ręczna wartość rynkowa PL (nadpisuje wyliczoną)<input name="marketValueOverridePln" type="number" inputmode="numeric" /></label>
+          <label class="inline"><input type="checkbox" name="autoRefresh" checked /> Automatycznie pobieraj cenę ze strony aukcji</label>
+        </details>
+        <label>Notatki<textarea name="notes" rows="2"></textarea></label>
+        <div class="actions">
+          <button type="submit" class="primary">Zapisz</button>
+          <button type="button" class="ghost" id="form-cancel">Anuluj</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- KALKULATOR -->
+    <section id="view-calc" class="view">
+      <h2>Kalkulator kosztów</h2>
+      <form id="calc-form" class="card form">
+        <div class="row">
+          <label>Cena aukcji<input name="price" type="number" inputmode="decimal" value="15000" /></label>
+          <label>Waluta<select name="currency"><option>CHF</option><option>EUR</option><option>PLN</option></select></label>
+        </div>
+        <div class="row">
+          <label>Pojemność (cm³)<input name="engineCc" type="number" inputmode="numeric" placeholder="1995" /></label>
+          <label>Wartość rynkowa PL<input name="marketValuePln" type="number" inputmode="numeric" /></label>
+        </div>
+        <button class="primary">Przelicz</button>
+      </form>
+      <div id="calc-result"></div>
+    </section>
+
+    <!-- ALERTY -->
+    <section id="view-alerts" class="view">
+      <h2>Historia powiadomień</h2>
+      <div id="alert-list" class="list"></div>
+    </section>
+
+    <!-- USTAWIENIA -->
+    <section id="view-settings" class="view">
+      <h2>Ustawienia</h2>
+      <form id="settings-form" class="form">
+        <div class="card">
+          <h3>Kryterium okazji</h3>
+          <div class="row">
+            <label>Próg okazji (% poniżej rynku)<input name="thresholdPct" type="number" step="0.5" /></label>
+            <label>Sprawdzaj X min przed końcem<input name="checkMinutesBeforeEnd" type="number" /></label>
+          </div>
+          <label>Przypomnienie X min przed końcem (0 = wył.)<input name="reminderMinutesBeforeEnd" type="number" /></label>
+        </div>
+
+        <div class="card">
+          <h3>Koszty sprowadzenia</h3>
+          <p class="muted small">Liczone po kolei od góry. „% od narastająco” = procent od ceny auta + wszystkich pozycji powyżej (tak liczy się np. akcyzę i VAT). Warunek pojemności: gdy pojemność auta nieznana, przyjmowana jest duża (ostrożnie).</p>
+          <div id="cost-items"></div>
+          <button type="button" class="ghost" id="add-cost">+ Dodaj pozycję</button>
+        </div>
+
+        <div class="card">
+          <h3>Kurs walut</h3>
+          <label>Źródło kursu
+            <select name="fxMode"><option value="nbp">NBP (automatycznie)</option><option value="manual">Ręczny</option></select>
+          </label>
+          <div class="row">
+            <label>CHF → PLN (ręczny / zapasowy)<input name="manualChfPln" type="number" step="0.0001" /></label>
+            <label>EUR → PLN<input name="manualEurPln" type="number" step="0.0001" /></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Wycena rynkowa w Polsce</h3>
+          <label class="inline"><input type="checkbox" name="market.sources.otomoto" /> Otomoto</label>
+          <label class="inline"><input type="checkbox" name="market.sources.olx" /> OLX</label>
+          <p class="muted small">Facebook Marketplace wymaga logowania i blokuje automaty – aplikacja generuje link do wyszukiwania, a znalezione ceny wpisujesz przy aukcji.</p>
+          <div class="row">
+            <label>Tolerancja rocznika (± lat)<input name="market.yearTolerance" type="number" /></label>
+            <label>Tolerancja przebiegu (± %)<input name="market.mileageTolerancePct" type="number" /></label>
+          </div>
+          <div class="row">
+            <label>Min. liczba ogłoszeń<input name="market.minListings" type="number" /></label>
+            <label>Statystyka
+              <select name="market.statistic"><option value="median">mediana</option><option value="p25">dolny kwartyl (ostrożnie)</option></select>
+            </label>
+          </div>
+          <div class="row">
+            <label>Rabat od cen ogłoszeń (%)<input name="market.askingPriceDiscountPct" type="number" step="0.5" /></label>
+            <label>Ważność wyceny (h)<input name="market.cacheHours" type="number" /></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Strona z aukcjami</h3>
+          <p class="muted small">Opcjonalnie: selektory CSS ceny i czasu końca na stronie aukcji oraz ciasteczko sesji (jeśli strona wymaga logowania).</p>
+          <label>Selektor ceny<input name="auctionSite.priceSelector" placeholder=".current-bid" /></label>
+          <label>Selektor czasu końca<input name="auctionSite.endTimeSelector" placeholder=".end-date" /></label>
+          <label>Cookie<input name="auctionSite.cookie" type="password" autocomplete="off" /></label>
+          <label>Odświeżaj cenę co (min)<input name="auctionSite.refreshMinutes" type="number" /></label>
+        </div>
+
+        <div class="card">
+          <h3>Powiadomienia</h3>
+          <label class="inline"><input type="checkbox" name="notifications.webPush.enabled" /> Push na tym urządzeniu (iPhone: najpierw „Dodaj do ekranu początkowego”)</label>
+          <button type="button" class="ghost" id="enable-push">Włącz powiadomienia na tym urządzeniu</button>
+          <hr />
+          <label class="inline"><input type="checkbox" name="notifications.telegram.enabled" /> Telegram</label>
+          <div class="row">
+            <label>Bot token<input name="notifications.telegram.botToken" type="password" autocomplete="off" /></label>
+            <label>Chat ID<input name="notifications.telegram.chatId" /></label>
+          </div>
+          <hr />
+          <label class="inline"><input type="checkbox" name="notifications.ntfy.enabled" /> ntfy (aplikacja ntfy na iPhone)</label>
+          <div class="row">
+            <label>Serwer<input name="notifications.ntfy.server" /></label>
+            <label>Temat (topic)<input name="notifications.ntfy.topic" placeholder="losowa-dluga-nazwa" /></label>
+          </div>
+          <button type="button" class="ghost" id="test-notify">Wyślij testowe powiadomienie</button>
+          <p id="notify-report" class="muted small"></p>
+        </div>
+
+        <div class="actions sticky">
+          <button type="submit" class="primary">Zapisz ustawienia</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-view="auctions" class="active"><span>🚗</span>Aukcje</button>
+    <button data-view="add"><span>＋</span>Dodaj</button>
+    <button data-view="calc"><span>🧮</span>Kalkulator</button>
+    <button data-view="alerts"><span>🔔</span>Alerty</button>
+    <button data-view="settings"><span>⚙️</span>Ustawienia</button>
+  </nav>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <template id="cost-item-tpl">
+    <div class="cost-item">
+      <input data-k="name" placeholder="Nazwa" class="grow" />
+      <select data-k="type"><option value="fixed">kwota stała</option><option value="percent">procent</option></select>
+      <span class="fixed-only"><input data-k="amount" type="number" step="0.01" placeholder="kwota" /><select data-k="currency"><option>PLN</option><option>CHF</option><option>EUR</option></select></span>
+      <span class="percent-only"><input data-k="pct" type="number" step="0.01" placeholder="%" /><select data-k="base"><option value="running">% od narastająco</option><option value="price">% od ceny auta</option></select></span>
+      <span class="cc"><input data-k="engineCcMin" type="number" placeholder="cm³ od" /><input data-k="engineCcMax" type="number" placeholder="cm³ do" /></span>
+      <span class="item-actions"><button type="button" data-act="up" class="ghost tiny">↑</button><button type="button" data-act="del" class="ghost tiny danger">✕</button></span>
+    </div>
+  </template>
+
+  <script src="/app.js"></script>
+</body>
+</html>

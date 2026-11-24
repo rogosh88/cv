@@ -1,0 +1,22 @@
+{
+  "name": "auction-monitor",
+  "version": "1.0.0",
+  "description": "Monitor aukcji aut ze Szwajcarii vs ceny rynkowe w Polsce",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "express": "^5.3.0",
+    "web-push": "^4.0.0"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  }
+}
