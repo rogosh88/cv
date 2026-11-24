@@ -290,7 +290,19 @@ function costRow(item = { type: 'fixed', currency: 'PLN', base: 'running' }) {
   return node;
 }
 
+async function loadLoginStatus() {
+  try {
+    const st = await api('/api/auction-site/status');
+    $('#login-report').textContent = st.blockedUntil
+      ? `⏸ Logowanie wstrzymane do ${new Date(st.blockedUntil).toLocaleString('pl-PL')}: ${st.blockReason}`
+      : st.loggedInAt
+        ? `Zalogowano: ${new Date(st.loggedInAt).toLocaleString('pl-PL')}`
+        : '';
+  } catch {}
+}
+
 function renderSettings() {
+  loadLoginStatus();
   const f = $('#settings-form');
   for (const el of f.elements) {
     if (!el.name) continue;
@@ -347,7 +359,7 @@ $('#test-login').addEventListener('click', async () => {
   $('#login-report').textContent = 'Loguję…';
   try {
     await api('/api/auction-site/test-login', { method: 'POST', body: {} });
-    $('#login-report').textContent = '✅ Zalogowano poprawnie';
+    $('#login-report').textContent = '✅ Zalogowano poprawnie – sesja zapamiętana';
   } catch (err) {
     $('#login-report').textContent = `❌ ${err.message}`;
   }

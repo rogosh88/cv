@@ -195,3 +195,31 @@ test('logowanie formularzem i pobranie strony aukcji z sesją', async () => {
     server.close();
   }
 });
+
+test('po nieudanym logowaniu nie ma kolejnych prób (ochrona przed blokadą konta)', async () => {
+  const http = require('http');
+  const { refreshAuction, resetSession, sessionStatus } = require('../src/auctions');
+  let loginPosts = 0;
+  const server = http.createServer((req, res) => {
+    if (req.url === '/login' && req.method === 'GET') return res.end('<form action="/do-login" method="post"><input name="email"><input type="password" name="pass"></form>');
+    if (req.url === '/do-login') {
+      loginPosts++;
+      return res.end('<input type="password">');
+    }
+    res.end('<form><input type="password"></form>');
+  });
+  await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    resetSession();
+    const site = { loginUrl: `${base}/login`, username: 'a', password: 'zle' };
+    await assert.rejects(refreshAuction({ url: `${base}/a/1` }, site), /Logowanie nieudane/);
+    await assert.rejects(refreshAuction({ url: `${base}/a/2` }, site), /wstrzymane/);
+    await assert.rejects(refreshAuction({ url: `${base}/a/3` }, site), /wstrzymane/);
+    assert.strictEqual(loginPosts, 1);
+    assert.ok(sessionStatus().blockedUntil);
+  } finally {
+    resetSession();
+    server.close();
+  }
+});

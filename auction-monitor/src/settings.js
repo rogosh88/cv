@@ -54,7 +54,8 @@ const DEFAULT_SETTINGS = {
     sellerAddressSelector: '',
     priceSelector: '',
     endTimeSelector: '',
-    refreshMinutes: 10,
+    refreshMinutes: 30, // co ile minut odświeżać cenę, gdy do końca aukcji jest daleko
+    nearEndRefreshMinutes: 2, // co ile minut tuż przed porównaniem (ok. 20 min przed końcem)
   },
 
   notifications: {

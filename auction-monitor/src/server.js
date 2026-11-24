@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const store = require('./store');
 const { getSettings, saveSettings, publicSettings } = require('./settings');
-const { resetSession, login } = require('./auctions');
+const { resetSession, login, sessionStatus } = require('./auctions');
 const { rates } = require('./fx');
 const { evaluateDeal } = require('./costs');
 const monitor = require('./monitor');
@@ -36,18 +36,23 @@ const wrap = (fn) => (req, res) =>
 // ---- Ustawienia ----
 app.get('/api/settings', (req, res) => res.json(publicSettings()));
 app.put('/api/settings', (req, res) => {
+  const before = JSON.stringify(getSettings().auctionSite);
   saveSettings(req.body);
-  resetSession(); // nowe dane logowania → nowa sesja
+  const site = getSettings().auctionSite;
+  // nowa sesja tylko, gdy zmieniono dane logowania
+  if (JSON.stringify([site.loginUrl, site.username, site.password]) !== JSON.stringify((({ loginUrl, username, password }) => [loginUrl, username, password])(JSON.parse(before)))) resetSession();
   res.json(publicSettings());
 });
+
+app.get('/api/auction-site/status', (req, res) => res.json(sessionStatus()));
 
 // Test logowania na stronę aukcji
 app.post(
   '/api/auction-site/test-login',
   wrap(async (req, res) => {
     resetSession();
-    await login(getSettings().auctionSite);
-    res.json({ ok: true });
+    await login(getSettings().auctionSite, { force: true });
+    res.json({ ok: true, status: sessionStatus() });
   })
 );
 

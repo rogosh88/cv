@@ -138,7 +138,10 @@ async function tick() {
       const checkMin = Number(settings.checkMinutesBeforeEnd);
       const nearCheck = left <= checkMin + 3;
       const sinceFetch = auction.lastFetchAt ? (Date.now() - new Date(auction.lastFetchAt).getTime()) / MIN : Infinity;
-      if (sinceFetch >= (nearCheck ? 1 : Number(settings.auctionSite.refreshMinutes || 10))) {
+      const every = nearCheck ? Number(settings.auctionSite.nearEndRefreshMinutes || 2) : Number(settings.auctionSite.refreshMinutes || 30);
+      // Tuż przed porównaniem (T-20) zawsze świeża cena
+      const mustFetch = !auction.checkDoneAt && left <= checkMin && sinceFetch >= 0.5;
+      if (sinceFetch >= every || mustFetch) {
         await updatePrice(auction, settings);
       }
 

@@ -175,7 +175,11 @@
           <label>Selektor ceny<input name="auctionSite.priceSelector" placeholder=".current-bid" /></label>
           <label>Selektor czasu końca<input name="auctionSite.endTimeSelector" placeholder=".end-date" /></label>
           <label>Cookie<input name="auctionSite.cookie" type="password" autocomplete="off" /></label>
-          <label>Odświeżaj cenę co (min)<input name="auctionSite.refreshMinutes" type="number" /></label>
+          <div class="row">
+            <label>Odświeżaj cenę co (min)<input name="auctionSite.refreshMinutes" type="number" min="5" /></label>
+            <label>Przed końcem co (min)<input name="auctionSite.nearEndRefreshMinutes" type="number" min="1" /></label>
+          </div>
+          <p class="muted small">Ochrona konta: logowanie maks. raz na 30 min, po nieudanym logowaniu pauza 6 h i powiadomienie, min. 4 s odstępu między zapytaniami, sesja zapamiętywana po restarcie.</p>
         </div>
 
         <div class="card">

@@ -35,7 +35,11 @@ geokodowanie OpenStreetMap (Nominatim) + trasa drogowa OSRM. Można ją też wpi
 
 *Ustawienia → Strona z aukcjami*: adres strony logowania, login i hasło → *Sprawdź logowanie*.
 Aplikacja sama wypełnia formularz logowania, trzyma sesję i loguje się ponownie, gdy sesja wygaśnie.
-Hasło jest przechowywane tylko na serwerze (`data/settings.json`) i nie jest odsyłane do przeglądarki. Sprawdzić formułę możesz w zakładce *Kalkulator*.
+Hasło jest przechowywane tylko na serwerze (`data/settings.json`) i nie jest odsyłane do przeglądarki.
+
+Ochrona konta przed blokadą: logowanie najwyżej raz na 30 min; po nieudanym logowaniu pauza 6 h (bez ponawiania)
+i powiadomienie; min. 4 s odstępu między zapytaniami; sesja zapisywana na dysku (restart nie wymaga logowania);
+cena odświeżana co 30 min, a w ostatnich ~23 min przed porównaniem co 2 min. Sprawdzić formułę możesz w zakładce *Kalkulator*.
 
 ## Uruchomienie
 
