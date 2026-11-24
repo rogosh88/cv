@@ -1,0 +1,27 @@
+# Uruchomienie: skopiuj .env.example do .env, uzupełnij i wpisz: docker compose up -d --build
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:?Ustaw APP_PASSWORD w pliku .env}
+      TZ: Europe/Warsaw
+    volumes:
+      - app-data:/data
+
+  # Caddy: automatyczny certyfikat HTTPS (Let's Encrypt) – wymagany dla powiadomień na iPhonie
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    command: caddy reverse-proxy --from ${DOMAIN:?Ustaw DOMAIN w pliku .env} --to app:3000
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+    depends_on:
+      - app
+
+volumes:
+  app-data:
+  caddy-data:

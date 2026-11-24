@@ -49,10 +49,30 @@ APP_PASSWORD=twoje-haslo npm start     # http://localhost:3000
 npm test
 ```
 
-Monitor musi działać 24/7 na serwerze (telefon nie może wykonywać zadań w tle), np.:
+Monitor musi działać 24/7 na serwerze (telefon nie może wykonywać zadań w tle).
 
-- **VPS / Raspberry Pi**: `docker build -t aukcje . && docker run -d -p 3000:3000 -v aukcje-data:/data -e APP_PASSWORD=... aukcje`
-- **Render / Railway / Fly.io**: deploy z Dockerfile, podłącz trwały wolumen pod `/data`, ustaw `APP_PASSWORD`.
+### Serwer VPS (zalecane, ok. 20–25 zł/mies.)
+
+1. Kup najmniejszy serwer VPS z Ubuntu (np. Hetzner CX22, OVH, Mikrus) i zaloguj się: `ssh root@IP_SERWERA`
+2. Zainstaluj Dockera i pobierz aplikację:
+   ```bash
+   curl -fsSL https://get.docker.com | sh
+   git clone -b claude/swiss-car-auction-monitor-5gthw4 https://github.com/rogosh88/cv.git
+   cd cv/auction-monitor
+   cp .env.example .env && nano .env     # ustaw APP_PASSWORD i DOMAIN
+   docker compose up -d --build
+   ```
+3. Otwórz `https://DOMAIN` (np. `https://203-0-113-10.sslip.io`) – certyfikat HTTPS tworzy się sam w ~1 min.
+
+Aktualizacja: `git pull && docker compose up -d --build`. Logi: `docker compose logs -f app`.
+Dane (aukcje, ustawienia, sesja) są w wolumenie Dockera `app-data` – przetrwają aktualizacje i restarty.
+
+### Bez Dockera (np. Raspberry Pi w domu)
+
+```bash
+cd auction-monitor && npm ci --omit=dev
+APP_PASSWORD=... npm start      # port 3000; HTTPS zapewnij np. przez Cloudflare Tunnel
+```
 
 Zmienne środowiskowe: `PORT`, `DATA_DIR`, `APP_PASSWORD`, opcjonalnie `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`.
 
