@@ -1,5 +1,5 @@
 // Service worker: cache powłoki aplikacji + obsługa powiadomień push.
-const CACHE = 'auction-monitor-v4';
+const CACHE = 'auction-monitor-v5';
 const SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', (e) => {

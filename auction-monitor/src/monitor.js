@@ -130,6 +130,110 @@ function saveChanges(original, updated) {
   store.upsertAuction(fresh);
 }
 
+// ---------- Automatyczny skan listy aukcji (bestcarprice) ----------
+function scanState() {
+  return store.read('list-scan', {});
+}
+
+/** Przegląda listę aktywnych aukcji: aktualizuje ceny znanych aut i dodaje nowe kończące się w horyzoncie. */
+async function discover(settings, { force = false } = {}) {
+  const site = settings.auctionSite;
+  if (!site.autoImport && !force) return null;
+  if (!(site.loginUrl && site.username && site.password)) {
+    if (force) throw new Error('Uzupełnij adres logowania, login i hasło w ustawieniach');
+    return null;
+  }
+  const browser = require('./browser');
+  const { login } = require('./auctions');
+  const { parseListCard, parseBestCarPriceText } = require('./sites/bestcarprice');
+  const { listKey, auctionListKey, importParsed } = require('./importer');
+
+  const horizon = Number(site.horizonMinutes) || 180;
+  const minYear = Number(site.minYear) || 0;
+  const maxKm = Number(site.maxMileageKm) || 0;
+  const passes = (c) =>
+    c.minutesLeft != null && c.minutesLeft > 0 && c.minutesLeft <= horizon && (!minYear || !c.year || c.year >= minYear) && (!maxKm || !c.mileageKm || c.mileageKm <= maxKm);
+  const known = () => new Map(store.listAuctions().map((a) => [auctionListKey(a), a]));
+  const byKey = known();
+
+  const state = { at: new Date().toISOString(), cards: 0, inHorizon: 0, imported: 0, updated: 0, errors: [] };
+  try {
+    const res = await browser.scanList(
+      site,
+      {
+        listUrl: site.listUrl || 'https://app.bestcarprice.ch/?tab=active',
+        horizonMin: horizon,
+        maxDetails: Number(site.maxDetailsPerScan) || 8,
+        parseCard: parseListCard,
+        needsDetail: (c) => passes(c) && !byKey.get(listKey(c.title, c.mileageKm))?.url,
+      },
+      () => login(site)
+    );
+    const now = new Date().toISOString();
+    state.cards = res.cards.length;
+
+    // 1) Ceny znanych aut z samej listy (jedno wejście dla wszystkich)
+    const current = known();
+    for (const card of res.cards) {
+      const c = parseListCard(card.text);
+      if (passes(c)) state.inHorizon++;
+      const a = current.get(listKey(c.title, c.mileageKm));
+      if (!a || a.status !== 'active') continue;
+      const fresh = store.getAuction(a.id);
+      if (c.currentPrice != null && c.currentPrice !== fresh.currentPrice) {
+        fresh.currentPrice = c.currentPrice;
+        fresh.priceUpdatedAt = now;
+      }
+      fresh.lastListSeenAt = now;
+      fresh.lastFetchError = null;
+      await evaluate(fresh, settings);
+      store.upsertAuction(fresh);
+      state.updated++;
+    }
+
+    // 2) Nowe aukcje – dane ze stron szczegółów
+    for (const d of res.details) {
+      if (d.error) {
+        state.errors.push(`Szczegóły: ${d.error}`);
+        continue;
+      }
+      const card = parseListCard(d.cardText);
+      const parsed = parseBestCarPriceText(d.text, d.url);
+      if (!parsed.endsAt && card.minutesLeft != null) parsed.endsAt = new Date(Date.now() + card.minutesLeft * MIN).toISOString();
+      if (parsed.currentPrice == null && card.currentPrice != null) parsed.currentPrice = card.currentPrice;
+      if (!parsed.title && card.title) parsed.title = card.title;
+      try {
+        const r = await importParsed(parsed, { extra: { source: 'bestcarprice', listKey: listKey(card.title, card.mileageKm), lastListSeenAt: now } });
+        if (r.created) state.imported++;
+      } catch (err) {
+        state.errors.push(`${card.title || 'aukcja'}: ${err.message}`);
+      }
+    }
+    if (!res.cards.length) {
+      state.errors.push('Na liście nie rozpoznano żadnych aukcji – zapisano podgląd strony (data/debug-list.json)');
+      if (res.snapshot) store.write('debug-list', res.snapshot);
+    }
+  } catch (err) {
+    state.errors.push(err.message);
+  }
+  state.errors = state.errors.slice(0, 6);
+  store.write('list-scan', state);
+  if (force && state.errors.length && !state.cards) throw new Error(state.errors[0]);
+  return state;
+}
+
+function shouldScan(settings) {
+  const site = settings.auctionSite;
+  if (!site.autoImport || !(site.username && site.password)) return false;
+  const checkMin = Number(settings.checkMinutesBeforeEnd);
+  const nearAny = store
+    .listAuctions()
+    .some((a) => a.status === 'active' && a.source === 'bestcarprice' && !a.checkDoneAt && minutesLeft(a) != null && minutesLeft(a) <= checkMin + 3 && minutesLeft(a) > 0);
+  const every = nearAny ? Number(site.nearEndRefreshMinutes || 2) : Number(site.listRefreshMinutes || 15);
+  const last = scanState().at;
+  return !last || (Date.now() - new Date(last).getTime()) / MIN >= every;
+}
+
 let running = false;
 
 async function tick() {
@@ -137,6 +241,7 @@ async function tick() {
   running = true;
   try {
     const settings = getSettings();
+    if (shouldScan(settings)) await discover(settings);
     let marketLookupsLeft = 2; // ogranicz liczbę zapytań do portali na jeden cykl
     for (const original of store.listAuctions()) {
       if (original.status !== 'active') continue;
@@ -156,7 +261,10 @@ async function tick() {
       const every = nearCheck ? Number(settings.auctionSite.nearEndRefreshMinutes || 2) : Number(settings.auctionSite.refreshMinutes || 30);
       // Tuż przed porównaniem (T-20) zawsze świeża cena
       const mustFetch = !auction.checkDoneAt && left <= checkMin && sinceFetch >= 0.5;
-      if (sinceFetch >= every || mustFetch) {
+      // Auta z bestcarprice odświeżane są z listy (jedno wejście dla wszystkich) – bez otwierania każdej aukcji
+      const sinceList = auction.lastListSeenAt ? (Date.now() - new Date(auction.lastListSeenAt).getTime()) / MIN : Infinity;
+      const freshFromList = settings.auctionSite.autoImport && sinceList < Math.max(every, 1);
+      if (!freshFromList && (sinceFetch >= every || mustFetch)) {
         await updatePrice(auction, settings);
       }
 
@@ -200,4 +308,4 @@ function start() {
   return setInterval(tick, MIN);
 }
 
-module.exports = { start, tick, evaluate, ensureDistance, updateMarket, updatePrice, dealMessage, minutesLeft, sendDeal };
+module.exports = { discover, scanState, start, tick, evaluate, ensureDistance, updateMarket, updatePrice, dealMessage, minutesLeft, sendDeal };

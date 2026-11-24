@@ -156,10 +156,44 @@ function tickCountdowns() {
 }
 setInterval(tickCountdowns, 1000);
 
+async function loadScanStatus() {
+  try {
+    const st = await api('/api/auction-site/scan');
+    const el = $('#scan-status');
+    if (!st.at) {
+      el.textContent = settings?.auctionSite?.autoImport
+        ? 'Aukcje z bestcarprice pobiorą się automatycznie po zapisaniu loginu i hasła (Ustawienia).'
+        : 'Automatyczne pobieranie aukcji wyłączone (Ustawienia).';
+      return;
+    }
+    const time = new Date(st.at).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' });
+    const h = Math.round((settings?.auctionSite?.horizonMinutes || 180) / 60);
+    el.innerHTML = `Lista bestcarprice (${time}): ${st.cards} aukcji, w ciągu ${h} h: ${st.inHorizon}, nowe: ${st.imported}, ceny: ${st.updated}` +
+      (st.errors?.length ? `<div class="error">${st.errors.map(esc).join('<br>')}</div>` : '');
+  } catch {}
+}
+
 async function loadAuctions() {
   auctions = await api('/api/auctions');
   renderAuctions();
+  loadScanStatus();
 }
+$('#scan-now').addEventListener('click', async (ev) => {
+  const btn = ev.target;
+  btn.disabled = true;
+  btn.textContent = 'Skanuję… (do 2 min)';
+  try {
+    await api('/api/auction-site/scan', { method: 'POST', body: {} });
+    await loadAuctions();
+    toast('Lista przejrzana');
+  } catch (err) {
+    toast(err.message, 6000);
+    loadScanStatus();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Skanuj teraz';
+  }
+});
 $('#reload').addEventListener('click', () => loadAuctions().then(() => toast('Odświeżono')));
 $('#show-ended').addEventListener('change', renderAuctions);
 setInterval(() => document.visibilityState === 'visible' && loadAuctions().catch(() => {}), 30000);

@@ -23,12 +23,18 @@
   <main>
     <!-- AUKCJE -->
     <section id="view-auctions" class="view active">
+      <div class="card scan-card">
+        <div class="toolbar" style="margin:0">
+          <div class="small" id="scan-status">Automatyczne pobieranie aukcji z bestcarprice…</div>
+          <button class="tiny" id="scan-now">Skanuj teraz</button>
+        </div>
+      </div>
       <div class="toolbar">
         <label class="small"><input type="checkbox" id="show-ended" /> pokaż zakończone</label>
         <button class="ghost" id="reload">Odśwież</button>
       </div>
       <div id="auction-list" class="list"></div>
-      <p id="empty" class="muted center hidden">Brak aukcji. Dodaj pierwszą w zakładce „Dodaj”.</p>
+      <p id="empty" class="muted center hidden">Brak aukcji. Aplikacja sama dodaje aukcje z bestcarprice kończące się w najbliższych godzinach (przycisk „Skanuj teraz”). Możesz też dodać aukcję ręcznie w zakładce „Dodaj”.</p>
     </section>
 
     <!-- DODAJ / EDYTUJ -->
@@ -182,6 +188,18 @@
             <label>Hasło<input name="auctionSite.password" type="password" autocomplete="new-password" /></label>
           </div>
           <button type="button" class="ghost" id="test-login">Sprawdź logowanie</button>
+          <hr />
+          <label class="inline"><input type="checkbox" name="auctionSite.autoImport" /> Automatycznie pobieraj aukcje z listy „Aktuelle”</label>
+          <label>Adres listy aukcji<input name="auctionSite.listUrl" type="url" /></label>
+          <div class="row">
+            <label>Dodawaj aukcje kończące się w ciągu (min)<input name="auctionSite.horizonMinutes" type="number" min="30" /></label>
+            <label>Przeglądaj listę co (min)<input name="auctionSite.listRefreshMinutes" type="number" min="5" /></label>
+          </div>
+          <div class="row">
+            <label>Filtr: rocznik od<input name="auctionSite.minYear" type="number" placeholder="np. 2012" /></label>
+            <label>Filtr: przebieg do (km)<input name="auctionSite.maxMileageKm" type="number" placeholder="np. 250000" /></label>
+          </div>
+          <label>Nowych aukcji na jedno przejrzenie (ochrona konta)<input name="auctionSite.maxDetailsPerScan" type="number" min="1" max="20" /></label>
           <p id="login-report" class="muted small"></p>
           <p class="muted small">Hasło jest zapisane tylko na Twoim serwerze i nie jest odsyłane do przeglądarki. Zapisz ustawienia przed sprawdzeniem.</p>
           <hr />

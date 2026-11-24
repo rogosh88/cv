@@ -49,6 +49,14 @@ const DEFAULT_SETTINGS = {
     // Logowanie: adres strony logowania + login i hasło (formularz wypełniany automatycznie)
     loginUrl: 'https://app.bestcarprice.ch/login',
     mode: 'auto', // 'auto' (bestcarprice → ukryta przeglądarka), 'browser', 'html'
+    // Automatyczne pobieranie aukcji z listy „Aktuelle”
+    autoImport: true,
+    listUrl: 'https://app.bestcarprice.ch/?tab=active',
+    listRefreshMinutes: 15, // co ile minut przeglądać listę
+    horizonMinutes: 180, // dodawaj aukcje kończące się w ciągu tylu minut
+    maxDetailsPerScan: 8, // ile nowych aukcji otwierać na jedno przejrzenie listy (ochrona konta)
+    minYear: null, // filtr: najstarszy rocznik (puste = bez filtra)
+    maxMileageKm: null, // filtr: maks. przebieg (puste = bez filtra)
     username: '',
     password: '',
     cookie: '', // alternatywnie: ciasteczko sesji skopiowane z przeglądarki

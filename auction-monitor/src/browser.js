@@ -163,4 +163,100 @@ async function resetBrowserSession() {
   fs.rmSync(STATE_FILE, { force: true });
 }
 
-module.exports = { login, fetchPage, close, resetBrowserSession };
+// ---------- Skan listy aktywnych aukcji ----------
+
+/** W przeglądarce: oznacza kafelki aukcji (najmniejsze elementy z przebiegiem i czasem do końca) i zwraca ich tekst. */
+function markCardsInPage() {
+  const timeRe = /\d\s*(Minute|Stunde|Std|Tag|Sekunde)|\b\d{1,2}:\d{2}:\d{2}\b/i;
+  const kmRe = /\d\s*km\b/i;
+  const els = [...document.querySelectorAll('body *')].filter((el) => {
+    if (el.children.length === 0 && el.tagName !== 'DIV') return false;
+    const t = el.innerText || '';
+    return kmRe.test(t) && timeRe.test(t) && t.length < 1500;
+  });
+  const minimal = els.filter((el) => !els.some((o) => o !== el && el.contains(o)));
+  return minimal.map((el, i) => {
+    el.setAttribute('data-am-card', String(i));
+    const a = el.closest('a[href]') || el.querySelector('a[href]');
+    return { index: i, text: el.innerText, href: a ? a.href : null };
+  });
+}
+
+async function readCards(page) {
+  return page.evaluate(markCardsInPage);
+}
+
+/** Przewija listę, aż widać aukcje kończące się później niż horyzont (lista posortowana po czasie końca). */
+async function loadCards(page, horizonMin, parseCard) {
+  let cards = [];
+  for (let i = 0; i < 15; i++) {
+    cards = await readCards(page);
+    const parsed = cards.map((c) => parseCard(c.text));
+    const last = parsed[parsed.length - 1];
+    if (!cards.length || (last && last.minutesLeft != null && last.minutesLeft > horizonMin)) break;
+    const before = cards.length;
+    await page.evaluate(() => {
+      const els = document.querySelectorAll('[data-am-card]');
+      els[els.length - 1]?.scrollIntoView({ block: 'end' });
+      window.scrollBy(0, window.innerHeight);
+    });
+    await page.waitForTimeout(1500);
+    if ((await readCards(page)).length === before) break; // nic nowego się nie doładowało
+  }
+  return cards;
+}
+
+/**
+ * Otwiera listę aukcji, czyta kafelki i dla wybranych (needsDetail) otwiera szczegóły.
+ * @returns {{ cards: Array<{text, href}>, details: Array<{text, url, cardText}>, snapshot }}
+ */
+async function scanList(site, { listUrl, horizonMin, maxDetails, parseCard, needsDetail }, ensureLogin) {
+  const openList = async (page) => {
+    await page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page
+      .waitForFunction(() => !!document.querySelector('input[type="password"]') || /\d\s*km\b/i.test(document.body?.innerText || ''), null, { timeout: 30000 })
+      .catch(() => {});
+    await page.waitForTimeout(1000);
+  };
+
+  const attempt = (page) =>
+    (async () => {
+      await openList(page);
+      if (await passwordVisible(page)) return { needsLogin: true };
+      const cards = await loadCards(page, horizonMin, parseCard);
+      const snapshot = cards.length ? null : { text: (await page.locator('body').innerText()).slice(0, 20000), html: (await page.content()).slice(0, 300000) };
+      const details = [];
+      const wanted = cards.filter((c) => needsDetail(parseCard(c.text), c)).slice(0, maxDetails);
+      for (const card of wanted) {
+        try {
+          if (card.href && !/^javascript:/i.test(card.href)) {
+            await page.goto(card.href, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          } else {
+            // Kafelek bez linku (aplikacja): klik → szczegóły → powrót do listy
+            const fresh = await readCards(page);
+            const match = fresh.find((c) => c.text === card.text);
+            if (!match) continue;
+            await page.locator(`[data-am-card="${match.index}"]`).first().click({ timeout: 10000 });
+          }
+          await page.waitForFunction(() => /Inserat läuft bis|Inseratnummer/i.test(document.body?.innerText || ''), null, { timeout: 20000 });
+          await page.waitForTimeout(700);
+          details.push({ cardText: card.text, url: page.url(), text: await page.locator('body').innerText() });
+        } catch (err) {
+          details.push({ cardText: card.text, error: err.message });
+        }
+        await page.waitForTimeout(2500 + Math.random() * 2000); // spokojne tempo – ochrona konta
+        await openList(page);
+        await loadCards(page, horizonMin, parseCard);
+      }
+      return { cards, details, snapshot };
+    })();
+
+  const first = await run(attempt);
+  if (!first.needsLogin) return first;
+  await ensureLogin();
+  const second = await run(attempt);
+  if (second.needsLogin) throw new Error('Po zalogowaniu lista aukcji nadal wymaga logowania');
+  return second;
+}
+
+module.exports = { login, fetchPage, scanList, close, resetBrowserSession };

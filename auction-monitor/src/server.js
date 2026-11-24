@@ -10,42 +10,7 @@ const { evaluateDeal } = require('./costs');
 const monitor = require('./monitor');
 const { parseBestCarPriceText } = require('./sites/bestcarprice');
 
-/** Tworzy lub aktualizuje aukcję z tekstu strony. Dopasowanie po numerze ogłoszenia lub adresie URL. */
-async function importText({ text, url }) {
-  if (!text || String(text).length < 30) throw new Error('Brak tekstu strony');
-  // Skrót iPhone wysyła "adres\ntekst strony"
-  const firstLine = String(text).split('\n', 1)[0].trim();
-  if (!url && /^https?:\/\/\S+$/.test(firstLine)) {
-    url = firstLine;
-    text = String(text).slice(firstLine.length + 1);
-  }
-  const parsed = parseBestCarPriceText(text, url);
-  if (!parsed.make && !parsed.currentPrice) throw new Error('Nie rozpoznano danych aukcji – otwórz stronę szczegółów aukcji (Detail)');
-  const list = store.listAuctions();
-  const existing = list.find((a) => (parsed.externalId && a.externalId === parsed.externalId) || (parsed.url && a.url === parsed.url));
-  const now = new Date().toISOString();
-  let auction;
-  if (existing) {
-    auction = { ...existing };
-    // Aktualizujemy dane ze strony, ale nie nadpisujemy pól uzupełnionych ręcznie (pojemność, koszt naprawy…)
-    for (const [k, v] of Object.entries(parsed)) {
-      if (['currentPrice', 'endsAt', 'myBid', 'conditionNotes', 'url'].includes(k) || existing[k] == null || existing[k] === '') auction[k] = v;
-    }
-    if (parsed.currentPrice != null && parsed.currentPrice !== existing.currentPrice) auction.priceUpdatedAt = now;
-    if (parsed.endsAt && parsed.endsAt !== existing.endsAt && monitor.minutesLeft(auction) > getSettings().checkMinutesBeforeEnd) {
-      auction.checkDoneAt = null;
-      auction.reminderDoneAt = null;
-      auction.status = 'active';
-    }
-  } else {
-    if (!parsed.endsAt) throw new Error('Nie znaleziono daty zakończenia aukcji („Inserat läuft bis”)');
-    auction = { id: store.id(), status: 'active', createdAt: now, priceUpdatedAt: now, autoRefresh: true, ...parsed };
-  }
-  auction.lastImportAt = now;
-  await monitor.evaluate(auction, getSettings());
-  store.upsertAuction(auction);
-  return { created: !existing, auction };
-}
+const { importText } = require('./importer');
 const { notify, getVapid } = require('./notify');
 
 const app = express();
@@ -113,6 +78,11 @@ app.put('/api/settings', (req, res) => {
 });
 
 app.get('/api/auction-site/status', (req, res) => res.json(sessionStatus()));
+app.get('/api/auction-site/scan', (req, res) => res.json(monitor.scanState()));
+app.post(
+  '/api/auction-site/scan',
+  wrap(async (req, res) => res.json(await monitor.discover(getSettings(), { force: true })))
+);
 
 // Test logowania na stronę aukcji
 app.post(
