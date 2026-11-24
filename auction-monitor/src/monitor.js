@@ -6,6 +6,7 @@ const { evaluateDeal } = require('./costs');
 const market = require('./market');
 const { refreshAuction } = require('./auctions');
 const { notify } = require('./notify');
+const { drivingDistanceKm } = require('./geo');
 
 const MIN = 60 * 1000;
 const fmt = (n) => (n == null ? '—' : Math.round(n).toLocaleString('pl-PL'));
@@ -31,6 +32,7 @@ async function updatePrice(auction, settings) {
     if (data.price != null) auction.currentPrice = data.price;
     if (data.endsAt) auction.endsAt = data.endsAt;
     if (data.currency) auction.currency = data.currency.toUpperCase();
+    if (data.sellerAddress && !auction.sellerAddress) auction.sellerAddress = data.sellerAddress;
     auction.lastFetchAt = new Date().toISOString();
     auction.lastFetchError = null;
   } catch (err) {
@@ -40,13 +42,30 @@ async function updatePrice(auction, settings) {
   return auction;
 }
 
+/** Liczy odległość garaż → sprzedający (raz na parę adresów; wynik zapisany przy aukcji). */
+async function ensureDistance(auction, settings) {
+  const from = (settings.garageAddress || '').trim();
+  const to = (auction.sellerAddress || '').trim();
+  if (!from || !to || auction.distanceKmOverride) return auction;
+  if (auction.route && auction.route.from === from && auction.route.to === to && (auction.route.km || auction.route.manual)) return auction;
+  try {
+    const { km, method } = await drivingDistanceKm(from, to);
+    auction.route = { from, to, km, method, at: new Date().toISOString() };
+  } catch (err) {
+    auction.route = { from, to, km: null, error: err.message, at: new Date().toISOString() };
+  }
+  return auction;
+}
+
 async function evaluate(auction, settings) {
+  await ensureDistance(auction, settings);
   const fx = await rates();
   auction.evaluation = {
     ...evaluateDeal({
       price: auction.currentPrice,
       currency: auction.currency || 'CHF',
       engineCc: auction.engineCc,
+      distanceKm: auction.distanceKmOverride || auction.route?.km,
       costs: settings.costs,
       rates: fx,
       marketValuePln: auction.marketValueOverridePln || auction.market?.valuePln,
@@ -70,6 +89,7 @@ function dealMessage(auction, settings, kind) {
     `${carLabel(auction)}${auction.mileageKm ? `, ${fmt(auction.mileageKm)} km` : ''}`,
     `Cena teraz: ${fmt(auction.currentPrice)} ${cur} (≈ ${fmt(e.pricePln)} PLN)`,
     `Koszt w Polsce: ${fmt(e.totalPln)} PLN`,
+    auction.sellerAddress ? `Sprzedający: ${auction.sellerAddress}${auction.route?.km ? ` (${fmt(auction.route.km)} km)` : ''}` : '',
     `Wartość rynkowa PL: ${fmt(e.marketValuePln)} PLN${auction.market?.stats?.count ? ` (${auction.market.stats.count} ogł.)` : ''}`,
     `Taniej o ${e.discountPct}% (próg ${settings.thresholdPct}%)`,
     `Maks. stawka dla progu: ${fmt(e.maxBid)} ${cur}`,
@@ -162,4 +182,4 @@ function start() {
   return setInterval(tick, MIN);
 }
 
-module.exports = { start, tick, evaluate, updateMarket, updatePrice, dealMessage, minutesLeft, sendDeal };
+module.exports = { start, tick, evaluate, ensureDistance, updateMarket, updatePrice, dealMessage, minutesLeft, sendDeal };

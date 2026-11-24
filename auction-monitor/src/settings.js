@@ -14,16 +14,21 @@ const DEFAULT_SETTINGS = {
   manualChfPln: 4.6,
   manualEurPln: 4.3,
 
-  // Pozycje kosztowe, liczone po kolei. Wartości PRZYKŁADOWE – uzupełnij swoimi.
-  //  type 'fixed'   – kwota stała (currency: PLN / CHF / EUR)
-  //  type 'percent' – procent od: base 'price' (cena aukcji) albo 'running' (cena + wszystkie wcześniejsze pozycje)
+  // Adres Twojego garażu – start i koniec trasy po auto w Szwajcarii
+  garageAddress: '',
+
+  // Pozycje kosztowe, liczone po kolei od góry. Wartości PRZYKŁADOWE – uzupełnij swoimi.
+  //  type 'fixed'    – kwota stała (currency: PLN / CHF / EUR)
+  //  type 'percent'  – procent od: base 'price' (cena aukcji) albo 'running' (cena + wszystkie wcześniejsze pozycje)
+  //  type 'distance' – km (garaż → sprzedający) × trips (2 = w dwie strony) × ratePerKm (w walucie currency)
   //  engineCcMin / engineCcMax – opcjonalny warunek pojemności silnika (gdy nieznana → przyjmujemy dużą, czyli wariant ostrożny)
   costs: [
     { id: 'fee', name: 'Prowizja domu aukcyjnego', type: 'percent', pct: 0, base: 'price' },
+    { id: 'ch-transport', name: 'Transport w Szwajcarii (garaż ↔ sprzedający)', type: 'distance', ratePerKm: 2, currency: 'CHF', trips: 2 },
     { id: 'transport', name: 'Transport CH → PL', type: 'fixed', amount: 3500, currency: 'PLN' },
     { id: 'duty', name: 'Cło', type: 'percent', pct: 10, base: 'running' },
-    { id: 'excise-small', name: 'Akcyza (do 2000 cm³)', type: 'percent', pct: 3.1, base: 'running', engineCcMax: 2000 },
-    { id: 'excise-big', name: 'Akcyza (powyżej 2000 cm³)', type: 'percent', pct: 18.6, base: 'running', engineCcMin: 2001 },
+    { id: 'excise-small', name: 'Akcyza (do 1999 cm³)', type: 'percent', pct: 4, base: 'running', engineCcMax: 1999 },
+    { id: 'excise-big', name: 'Akcyza (od 2000 cm³)', type: 'percent', pct: 18, base: 'running', engineCcMin: 2000 },
     { id: 'vat', name: 'VAT', type: 'percent', pct: 23, base: 'running' },
     { id: 'other', name: 'Agencja celna, badanie, rejestracja', type: 'fixed', amount: 1500, currency: 'PLN' },
   ],
@@ -41,7 +46,12 @@ const DEFAULT_SETTINGS = {
 
   // Strona z aukcjami (adapter ogólny) – opcjonalne selektory CSS i ciasteczko sesji
   auctionSite: {
-    cookie: '',
+    // Logowanie: adres strony logowania + login i hasło (formularz wypełniany automatycznie)
+    loginUrl: '',
+    username: '',
+    password: '',
+    cookie: '', // alternatywnie: ciasteczko sesji skopiowane z przeglądarki
+    sellerAddressSelector: '',
     priceSelector: '',
     endTimeSelector: '',
     refreshMinutes: 10,
@@ -67,14 +77,40 @@ function deepMerge(base, override) {
   return out;
 }
 
+// Pola tajne – nie są odsyłane do przeglądarki; pusta wartość / maska przy zapisie = bez zmian
+const SECRETS = ['auctionSite.password', 'auctionSite.cookie', 'notifications.telegram.botToken'];
+const MASK = '••••••••';
+
+function getPath(o, p) {
+  return p.split('.').reduce((x, k) => (x == null ? x : x[k]), o);
+}
+function setPath(o, p, v) {
+  const keys = p.split('.');
+  let cur = o;
+  for (const k of keys.slice(0, -1)) cur = cur[k] = isObject(cur[k]) ? cur[k] : {};
+  cur[keys[keys.length - 1]] = v;
+}
+
+/** Ustawienia dla frontendu – sekrety zamaskowane. */
+function publicSettings() {
+  const s = JSON.parse(JSON.stringify(getSettings()));
+  for (const p of SECRETS) if (getPath(s, p)) setPath(s, p, MASK);
+  return s;
+}
+
 function getSettings() {
   return deepMerge(DEFAULT_SETTINGS, store.read('settings', {}));
 }
 
 function saveSettings(patch) {
+  patch = JSON.parse(JSON.stringify(patch || {}));
+  for (const p of SECRETS) {
+    const v = getPath(patch, p);
+    if (v === MASK) setPath(patch, p, getPath(getSettings(), p));
+  }
   const next = deepMerge(getSettings(), patch || {});
   store.write('settings', next);
   return next;
 }
 
-module.exports = { DEFAULT_SETTINGS, getSettings, saveSettings, deepMerge };
+module.exports = { DEFAULT_SETTINGS, getSettings, saveSettings, publicSettings, deepMerge, MASK };

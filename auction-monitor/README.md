@@ -17,8 +17,25 @@ okazja, gdy (wartość rynkowa − koszt w PL) / wartość rynkowa ≥ 30%
 
 Aplikacja pokazuje też **maksymalną stawkę** w CHF, do której aukcja nadal jest okazją.
 
-Domyślne pozycje kosztowe są **przykładowe** (transport 3500 PLN, cło 10%, akcyza 3,1% / 18,6%, VAT 23%, opłaty 1500 PLN) –
-wpisz swoje w *Ustawienia → Koszty sprowadzenia*. Sprawdzić formułę możesz w zakładce *Kalkulator*.
+Domyślne pozycje kosztowe (wszystkie edytowalne w *Ustawienia → Koszty sprowadzenia*):
+
+| Pozycja | Domyślnie |
+|---|---|
+| Transport w Szwajcarii | km garaż → sprzedający × 2 (w dwie strony) × 2 CHF/km |
+| Transport CH → PL | 3500 PLN (przykład) |
+| Cło | 10% (narastająco) |
+| Akcyza | 4% do 1999 cm³, 18% od 2000 cm³ (narastająco) |
+| VAT | 23% (narastająco) |
+| Agencja celna, badanie, rejestracja | 1500 PLN (przykład) |
+
+Odległość liczona jest automatycznie z adresu garażu (ustawienia) i adresu sprzedającego (z aukcji):
+geokodowanie OpenStreetMap (Nominatim) + trasa drogowa OSRM. Można ją też wpisać ręcznie przy aukcji.
+
+## Logowanie na stronę aukcji
+
+*Ustawienia → Strona z aukcjami*: adres strony logowania, login i hasło → *Sprawdź logowanie*.
+Aplikacja sama wypełnia formularz logowania, trzyma sesję i loguje się ponownie, gdy sesja wygaśnie.
+Hasło jest przechowywane tylko na serwerze (`data/settings.json`) i nie jest odsyłane do przeglądarki. Sprawdzić formułę możesz w zakładce *Kalkulator*.
 
 ## Uruchomienie
 

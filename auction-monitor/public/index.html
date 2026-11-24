@@ -59,6 +59,7 @@
             <select name="currency"><option>CHF</option><option>EUR</option><option>PLN</option></select>
           </label>
         </div>
+        <label>Adres sprzedającego (do wyliczenia transportu w CH)<input name="sellerAddress" placeholder="Bahnhofstrasse 1, 8001 Zürich" /></label>
         <label>Koniec aukcji* (czas lokalny)<input name="endsAt" type="datetime-local" required /></label>
         <label>Tytuł (opcjonalnie)<input name="title" placeholder="np. BMW 320d Touring M-Pakiet" /></label>
 
@@ -68,6 +69,7 @@
           <label>Fraza wyszukiwania OLX<input name="olxQuery" placeholder="bmw 320d" /></label>
           <label>Fraza wyszukiwania Facebook<input name="fbQuery" placeholder="bmw 320d" /></label>
           <label>Ceny z Facebook Marketplace / inne (PLN, oddzielone przecinkami)<input name="manualPrices" placeholder="72000, 69500, 75900" /></label>
+          <label>Ręczna odległość garaż → sprzedający (km, w jedną stronę)<input name="distanceKmOverride" type="number" inputmode="numeric" /></label>
           <label>Ręczna wartość rynkowa PL (nadpisuje wyliczoną)<input name="marketValueOverridePln" type="number" inputmode="numeric" /></label>
           <label class="inline"><input type="checkbox" name="autoRefresh" checked /> Automatycznie pobieraj cenę ze strony aukcji</label>
         </details>
@@ -91,6 +93,7 @@
           <label>Pojemność (cm³)<input name="engineCc" type="number" inputmode="numeric" placeholder="1995" /></label>
           <label>Wartość rynkowa PL<input name="marketValuePln" type="number" inputmode="numeric" /></label>
         </div>
+        <label>Odległość garaż → sprzedający (km, w jedną stronę)<input name="distanceKm" type="number" inputmode="numeric" /></label>
         <button class="primary">Przelicz</button>
       </form>
       <div id="calc-result"></div>
@@ -117,6 +120,8 @@
 
         <div class="card">
           <h3>Koszty sprowadzenia</h3>
+          <label>Adres Twojego garażu (start i koniec trasy po auto)<input name="garageAddress" placeholder="ulica, kod pocztowy, miejscowość, kraj" /></label>
+          <p class="muted small">Pozycja „za kilometr” = odległość drogowa garaż → adres sprzedającego × liczba przejazdów (2 = w dwie strony) × stawka.</p>
           <p class="muted small">Liczone po kolei od góry. „% od narastająco” = procent od ceny auta + wszystkich pozycji powyżej (tak liczy się np. akcyzę i VAT). Warunek pojemności: gdy pojemność auta nieznana, przyjmowana jest duża (ostrożnie).</p>
           <div id="cost-items"></div>
           <button type="button" class="ghost" id="add-cost">+ Dodaj pozycję</button>
@@ -155,8 +160,18 @@
         </div>
 
         <div class="card">
-          <h3>Strona z aukcjami</h3>
-          <p class="muted small">Opcjonalnie: selektory CSS ceny i czasu końca na stronie aukcji oraz ciasteczko sesji (jeśli strona wymaga logowania).</p>
+          <h3>Strona z aukcjami – logowanie</h3>
+          <label>Adres strony logowania<input name="auctionSite.loginUrl" type="url" placeholder="https://…/login" /></label>
+          <div class="row">
+            <label>Login / e-mail<input name="auctionSite.username" autocomplete="off" /></label>
+            <label>Hasło<input name="auctionSite.password" type="password" autocomplete="new-password" /></label>
+          </div>
+          <button type="button" class="ghost" id="test-login">Sprawdź logowanie</button>
+          <p id="login-report" class="muted small"></p>
+          <p class="muted small">Hasło jest zapisane tylko na Twoim serwerze i nie jest odsyłane do przeglądarki. Zapisz ustawienia przed sprawdzeniem.</p>
+          <hr />
+          <p class="muted small">Selektory CSS elementów na stronie aukcji (uzupełnię je, gdy prześlesz przykładową stronę aukcji).</p>
+          <label>Selektor adresu sprzedającego<input name="auctionSite.sellerAddressSelector" placeholder=".seller-address" /></label>
           <label>Selektor ceny<input name="auctionSite.priceSelector" placeholder=".current-bid" /></label>
           <label>Selektor czasu końca<input name="auctionSite.endTimeSelector" placeholder=".end-date" /></label>
           <label>Cookie<input name="auctionSite.cookie" type="password" autocomplete="off" /></label>
@@ -203,8 +218,9 @@
   <template id="cost-item-tpl">
     <div class="cost-item">
       <input data-k="name" placeholder="Nazwa" class="grow" />
-      <select data-k="type"><option value="fixed">kwota stała</option><option value="percent">procent</option></select>
+      <select data-k="type"><option value="fixed">kwota stała</option><option value="percent">procent</option><option value="distance">za kilometr</option></select>
       <span class="fixed-only"><input data-k="amount" type="number" step="0.01" placeholder="kwota" /><select data-k="currency"><option>PLN</option><option>CHF</option><option>EUR</option></select></span>
+      <span class="distance-only"><input data-k="ratePerKm" type="number" step="0.01" placeholder="stawka/km" /><select data-k="currency"><option>CHF</option><option>PLN</option><option>EUR</option></select><input data-k="trips" type="number" placeholder="przejazdy" title="2 = w dwie strony" /></span>
       <span class="percent-only"><input data-k="pct" type="number" step="0.01" placeholder="%" /><select data-k="base"><option value="running">% od narastająco</option><option value="price">% od ceny auta</option></select></span>
       <span class="cc"><input data-k="engineCcMin" type="number" placeholder="cm³ od" /><input data-k="engineCcMax" type="number" placeholder="cm³ do" /></span>
       <span class="item-actions"><button type="button" data-act="up" class="ghost tiny">↑</button><button type="button" data-act="del" class="ghost tiny danger">✕</button></span>

@@ -99,6 +99,9 @@ function auctionCard(a) {
       <div><div class="k">Maks. stawka (próg ${settings?.thresholdPct ?? 30}%)</div><div class="v">${e.maxBid != null ? fmt(e.maxBid) + ' ' + esc(cur) : '—'}</div></div>
     </div>
     ${a.checkResult ? `<div class="small muted">Sprawdzono ${a.checkResult.minutesLeft} min przed końcem: ${a.checkResult.isDeal ? '✅ okazja – wysłano powiadomienie' : `${a.checkResult.discountPct ?? '—'}% – bez powiadomienia`}</div>` : ''}
+    ${a.sellerAddress ? `<div class="small muted">📍 ${esc(a.sellerAddress)}${a.distanceKmOverride ? ` · ${fmt(a.distanceKmOverride)} km (ręcznie)` : a.route?.km ? ` · ${fmt(a.route.km)} km od garażu (${esc(a.route.method)})` : ''}</div>` : ''}
+    ${a.route?.error && !a.distanceKmOverride ? `<div class="error">Odległość: ${esc(a.route.error)}</div>` : ''}
+    ${(e.items || []).some((i) => i.missing) ? '<div class="error">Brak odległości do sprzedającego – koszt transportu w CH = 0. Uzupełnij adres sprzedającego i garażu.</div>' : ''}
     ${a.lastFetchError ? `<div class="error">Strona aukcji: ${esc(a.lastFetchError)}</div>` : ''}
     ${srcInfo ? `<div class="small muted">${srcInfo}</div>` : !a.marketValueOverridePln ? '<div class="small muted">Wycena rynkowa jeszcze nie pobrana.</div>' : ''}
     <div class="links">${links.join('')}</div>
@@ -122,7 +125,7 @@ function breakdownTable(e) {
   if (!e || e.totalPln == null) return '';
   return `<table class="breakdown">
     <tr><td>Cena auta</td><td>${fmt(e.pricePln)} PLN</td></tr>
-    ${(e.items || []).map((i) => `<tr><td>${esc(i.name)}</td><td>${fmt(i.amountPln)} PLN</td></tr>`).join('')}
+    ${(e.items || []).map((i) => `<tr><td>${esc(i.name)}${i.note ? `<span class="note ${i.missing ? 'missing' : ''}">${esc(i.note)}</span>` : ''}</td><td>${fmt(i.amountPln)} PLN</td></tr>`).join('')}
     <tr class="total"><td>Razem w Polsce</td><td>${fmt(e.totalPln)} PLN</td></tr>
   </table>`;
 }
@@ -279,7 +282,10 @@ function costRow(item = { type: 'fixed', currency: 'PLN', base: 'running' }) {
   const node = $('#cost-item-tpl').content.firstElementChild.cloneNode(true);
   node.dataset.type = item.type;
   node.dataset.id = item.id || Math.random().toString(36).slice(2, 8);
-  $$('[data-k]', node).forEach((el) => (el.value = item[el.dataset.k] ?? (el.tagName === 'SELECT' ? el.options[0].value : '')));
+  $$('[data-k]', node).forEach((el) => {
+    const def = el.dataset.k === 'trips' ? 2 : el.tagName === 'SELECT' ? el.options[0].value : '';
+    el.value = item[el.dataset.k] ?? def;
+  });
   $('[data-k="type"]', node).addEventListener('change', (e) => (node.dataset.type = e.target.value));
   return node;
 }
@@ -317,11 +323,14 @@ $('#settings-form').addEventListener('submit', async (ev) => {
   }
   patch.costs = $$('.cost-item').map((row) => {
     const item = { id: row.dataset.id };
+    const type = $('[data-k="type"]', row).value;
     $$('[data-k]', row).forEach((el) => {
+      const span = el.closest('span');
+      // pomiń pola ukryte dla danego typu (np. waluta kwoty stałej przy pozycji „za kilometr”)
+      if (span && /(fixed|percent|distance)-only/.test(span.className) && !span.classList.contains(`${type}-only`)) return;
       const v = el.value;
       item[el.dataset.k] = el.type === 'number' ? (v === '' ? null : Number(v)) : v;
     });
-    if (item.type === 'fixed') { delete item.pct; delete item.base; } else { delete item.amount; delete item.currency; }
     return item;
   });
   try {
@@ -331,6 +340,16 @@ $('#settings-form').addEventListener('submit', async (ev) => {
     loadAuctions();
   } catch (err) {
     toast(err.message, 4000);
+  }
+});
+
+$('#test-login').addEventListener('click', async () => {
+  $('#login-report').textContent = 'Loguję…';
+  try {
+    await api('/api/auction-site/test-login', { method: 'POST', body: {} });
+    $('#login-report').textContent = '✅ Zalogowano poprawnie';
+  } catch (err) {
+    $('#login-report').textContent = `❌ ${err.message}`;
   }
 });
 

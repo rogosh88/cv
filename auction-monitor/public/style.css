@@ -85,7 +85,7 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .breakdown { width: 100%; border-collapse: collapse; font-size: 14px; }
 .breakdown td { padding: 5px 0; border-bottom: 1px solid var(--line); }
-.breakdown td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.breakdown td:last-child { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; padding-left: 10px; }
 .breakdown tr.total td { font-weight: 700; border-bottom: 0; }
 .error { color: var(--bad); font-size: 13px; }
 .sample { font-size: 13px; }
@@ -96,7 +96,11 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
 .cost-item .grow { flex: 1 1 100%; }
 .cost-item span { display: flex; gap: 6px; flex: 1 1 45%; }
 .cost-item .item-actions { flex: 0 0 auto; margin-left: auto; }
-.cost-item[data-type="fixed"] .percent-only, .cost-item[data-type="percent"] .fixed-only { display: none; }
+.cost-item[data-type="fixed"] .percent-only, .cost-item[data-type="fixed"] .distance-only,
+.cost-item[data-type="percent"] .fixed-only, .cost-item[data-type="percent"] .distance-only,
+.cost-item[data-type="distance"] .fixed-only, .cost-item[data-type="distance"] .percent-only { display: none; }
+.breakdown .note { display: block; font-size: 12px; color: var(--muted); }
+.breakdown .note.missing { color: var(--warn); }
 
 /* Tab bar */
 .tabbar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 10; display: flex; background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }

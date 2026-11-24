@@ -2,12 +2,113 @@
 // Adapter ogólny: JSON-LD / meta tagi / selektory CSS z ustawień. Gdy strona wymaga logowania,
 // w ustawieniach można podać ciasteczko sesji. Gdy pobieranie się nie uda – cenę można aktualizować ręcznie.
 const cheerio = require('cheerio');
-const { getText, parseNumber } = require('./http');
+const { parseNumber, UA } = require('./http');
+
+// ---------- Sesja logowania (cookie jar w pamięci) ----------
+const jar = new Map(); // nazwa -> wartość
+let loggedInAt = 0;
+
+function storeCookies(res) {
+  const list = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+  for (const c of list) {
+    const [pair] = c.split(';');
+    const i = pair.indexOf('=');
+    if (i > 0) jar.set(pair.slice(0, i).trim(), pair.slice(i + 1).trim());
+  }
+}
+function cookieHeader(extra) {
+  const parts = [...jar].map(([k, v]) => `${k}=${v}`);
+  if (extra) parts.push(extra);
+  return parts.join('; ');
+}
+
+/** Pobranie z ręcznym śledzeniem przekierowań, żeby zachować ciasteczka z każdego kroku. */
+async function request(url, { method = 'GET', body, headers = {}, cookie } = {}) {
+  for (let i = 0; i < 8; i++) {
+    const res = await fetch(url, {
+      method,
+      body,
+      redirect: 'manual',
+      headers: { 'User-Agent': UA, 'Accept-Language': 'de-CH,de;q=0.9,pl;q=0.8', Cookie: cookieHeader(cookie), ...headers },
+      signal: AbortSignal.timeout(20000),
+    });
+    storeCookies(res);
+    const loc = res.headers.get('location');
+    if (res.status >= 300 && res.status < 400 && loc) {
+      url = new URL(loc, url).toString();
+      method = 'GET';
+      body = undefined;
+      delete headers['Content-Type'];
+      continue;
+    }
+    return { res, url, text: await res.text() };
+  }
+  throw new Error('Za dużo przekierowań');
+}
+
+/** Znajduje formularz logowania (z polem hasła) i wypełnia go danymi. */
+function buildLoginForm(html, pageUrl, username, password) {
+  const $ = cheerio.load(html);
+  const pw = $('input[type="password"]').first();
+  if (!pw.length) throw new Error('Na stronie logowania nie znaleziono pola hasła');
+  const form = pw.closest('form');
+  const fields = new URLSearchParams();
+  const scope = form.length ? form : $('body');
+  scope.find('input').each((_, el) => {
+    const name = $(el).attr('name');
+    const type = ($(el).attr('type') || 'text').toLowerCase();
+    if (!name || ['submit', 'button', 'image', 'file'].includes(type)) return;
+    if (type === 'checkbox' && $(el).attr('checked') == null) return;
+    fields.set(name, $(el).attr('value') || '');
+  });
+  const userInput =
+    scope.find('input[type="email"]').first().attr('name') ||
+    scope.find('input').filter((_, el) => /user|mail|login|benutzer|name/i.test($(el).attr('name') || '') && ($(el).attr('type') || 'text') !== 'hidden' && $(el).attr('type') !== 'password').first().attr('name') ||
+    scope.find('input[type="text"], input:not([type])').first().attr('name');
+  if (!userInput) throw new Error('Na stronie logowania nie znaleziono pola loginu');
+  fields.set(userInput, username);
+  fields.set(pw.attr('name'), password);
+  const action = new URL(form.attr('action') || pageUrl, pageUrl).toString();
+  return { action, method: (form.attr('method') || 'POST').toUpperCase(), body: fields.toString() };
+}
+
+async function login(site) {
+  if (!site.loginUrl || !site.username || !site.password) throw new Error('Brak danych logowania (adres logowania, login, hasło)');
+  jar.clear();
+  const page = await request(site.loginUrl);
+  const form = buildLoginForm(page.text, page.url, site.username, site.password);
+  const after = await request(form.action, {
+    method: form.method,
+    body: form.body,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Referer: page.url },
+  });
+  if (looksLikeLoginPage(after.text)) throw new Error('Logowanie nieudane – sprawdź login i hasło');
+  loggedInAt = Date.now();
+  return true;
+}
+
+function looksLikeLoginPage(html) {
+  return /<input[^>]+type=["']?password/i.test(html);
+}
+
+/** Pobiera stronę aukcji; w razie potrzeby loguje się (i ponawia raz). */
+async function fetchAuctionPage(url, site) {
+  const canLogin = site.loginUrl && site.username && site.password;
+  if (canLogin && !loggedInAt) await login(site);
+  let page = await request(url, { cookie: site.cookie });
+  if (!page.res.ok) throw new Error(`HTTP ${page.res.status} ze strony aukcji`);
+  if (canLogin && looksLikeLoginPage(page.text)) {
+    await login(site);
+    page = await request(url, { cookie: site.cookie });
+  }
+  return page.text;
+}
 
 function findInJsonLd($) {
   let price = null;
   let endsAt = null;
   let currency = null;
+  let sellerAddress = null;
   $('script[type="application/ld+json"]').each((_, el) => {
     try {
       const walk = (v) => {
@@ -21,17 +122,28 @@ function findInJsonLd($) {
           endsAt = endsAt ?? o.priceValidUntil ?? o.availabilityEnds ?? null;
         }
         endsAt = endsAt ?? v.endDate ?? null;
+        const addr = v.address || v.seller?.address || v.offeredBy?.address;
+        if (!sellerAddress && addr && typeof addr === 'object') {
+          sellerAddress = [addr.streetAddress, [addr.postalCode, addr.addressLocality].filter(Boolean).join(' '), addr.addressCountry?.name || addr.addressCountry]
+            .filter((x) => x && typeof x === 'string')
+            .join(', ') || null;
+        }
         Object.values(v).forEach(walk);
       };
       walk(JSON.parse($(el).html()));
     } catch {}
   });
-  return { price, endsAt, currency };
+  return { price, endsAt, currency, sellerAddress };
 }
 
 function parseAuctionHtml(html, siteSettings = {}) {
   const $ = cheerio.load(html);
-  const result = { price: null, endsAt: null, currency: null };
+  const result = { price: null, endsAt: null, currency: null, sellerAddress: null };
+
+  if (siteSettings.sellerAddressSelector) {
+    const t = $(siteSettings.sellerAddressSelector).first().text().replace(/\s+/g, ' ').trim();
+    if (t) result.sellerAddress = t;
+  }
 
   if (siteSettings.priceSelector) {
     const el = $(siteSettings.priceSelector).first();
@@ -47,6 +159,7 @@ function parseAuctionHtml(html, siteSettings = {}) {
   const ld = findInJsonLd($);
   result.price = result.price ?? ld.price;
   result.currency = ld.currency;
+  result.sellerAddress = result.sellerAddress ?? ld.sellerAddress;
   if (!result.endsAt && ld.endsAt) {
     const d = parseDate(ld.endsAt);
     if (d) result.endsAt = d.toISOString();
@@ -83,11 +196,15 @@ function zurichToDate(y, m, d, hh, mm, ss) {
 
 async function refreshAuction(auction, siteSettings) {
   if (!auction.url) throw new Error('Brak adresu URL aukcji');
-  const headers = siteSettings.cookie ? { Cookie: siteSettings.cookie } : {};
-  const html = await getText(auction.url, { headers });
+  const html = await fetchAuctionPage(auction.url, siteSettings);
   const data = parseAuctionHtml(html, siteSettings);
   if (data.price == null) throw new Error('Nie znaleziono ceny na stronie aukcji (ustaw selektor CSS w ustawieniach)');
   return data;
 }
 
-module.exports = { refreshAuction, parseAuctionHtml, parseDate };
+function resetSession() {
+  jar.clear();
+  loggedInAt = 0;
+}
+
+module.exports = { refreshAuction, resetSession, parseAuctionHtml, parseDate, login, buildLoginForm, looksLikeLoginPage };

@@ -3,7 +3,8 @@ const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const store = require('./store');
-const { getSettings, saveSettings } = require('./settings');
+const { getSettings, saveSettings, publicSettings } = require('./settings');
+const { resetSession, login } = require('./auctions');
 const { rates } = require('./fx');
 const { evaluateDeal } = require('./costs');
 const monitor = require('./monitor');
@@ -33,8 +34,22 @@ const wrap = (fn) => (req, res) =>
   });
 
 // ---- Ustawienia ----
-app.get('/api/settings', (req, res) => res.json(getSettings()));
-app.put('/api/settings', (req, res) => res.json(saveSettings(req.body)));
+app.get('/api/settings', (req, res) => res.json(publicSettings()));
+app.put('/api/settings', (req, res) => {
+  saveSettings(req.body);
+  resetSession(); // nowe dane logowania → nowa sesja
+  res.json(publicSettings());
+});
+
+// Test logowania na stronę aukcji
+app.post(
+  '/api/auction-site/test-login',
+  wrap(async (req, res) => {
+    resetSession();
+    await login(getSettings().auctionSite);
+    res.json({ ok: true });
+  })
+);
 
 app.get('/api/fx', wrap(async (req, res) => res.json(await rates())));
 
@@ -43,16 +58,16 @@ app.post(
   '/api/calc',
   wrap(async (req, res) => {
     const s = getSettings();
-    const { price, currency = 'CHF', engineCc, marketValuePln } = req.body;
+    const { price, currency = 'CHF', engineCc, marketValuePln, distanceKm } = req.body;
     res.json(
-      evaluateDeal({ price, currency, engineCc, costs: s.costs, rates: await rates(), marketValuePln: Number(marketValuePln) || null, thresholdPct: s.thresholdPct })
+      evaluateDeal({ price, currency, engineCc, distanceKm: Number(distanceKm) || null, costs: s.costs, rates: await rates(), marketValuePln: Number(marketValuePln) || null, thresholdPct: s.thresholdPct })
     );
   })
 );
 
 // ---- Aukcje ----
-const EDITABLE = ['title', 'make', 'model', 'year', 'mileageKm', 'fuel', 'engineCc', 'url', 'currency', 'currentPrice', 'endsAt', 'notes', 'otomotoUrl', 'olxQuery', 'fbQuery', 'manualPrices', 'marketValueOverridePln', 'autoRefresh', 'status'];
-const NUMERIC = ['year', 'mileageKm', 'engineCc', 'currentPrice', 'marketValueOverridePln'];
+const EDITABLE = ['title', 'make', 'model', 'year', 'mileageKm', 'fuel', 'engineCc', 'url', 'currency', 'currentPrice', 'endsAt', 'notes', 'otomotoUrl', 'olxQuery', 'fbQuery', 'manualPrices', 'marketValueOverridePln', 'autoRefresh', 'status', 'sellerAddress', 'distanceKmOverride'];
+const NUMERIC = ['year', 'mileageKm', 'engineCc', 'currentPrice', 'marketValueOverridePln', 'distanceKmOverride'];
 
 function sanitize(body) {
   const out = {};

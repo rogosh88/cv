@@ -34,8 +34,8 @@ test('akcyza zależna od pojemności; nieznana pojemność = wariant ostrożny',
   const small = calculateTotal(10000, { currency: 'CHF', engineCc: 1995, costs, rates });
   const big = calculateTotal(10000, { currency: 'CHF', engineCc: 2993, costs, rates });
   const unknown = calculateTotal(10000, { currency: 'CHF', costs, rates });
-  assert.ok(small.items.some((i) => i.name.includes('do 2000')));
-  assert.ok(!small.items.some((i) => i.name.includes('powyżej')));
+  assert.ok(small.items.some((i) => i.name.includes('do 1999')));
+  assert.ok(!small.items.some((i) => i.name.includes('od 2000')));
   assert.ok(big.totalPln > small.totalPln);
   assert.strictEqual(unknown.totalPln, big.totalPln);
 });
@@ -123,4 +123,75 @@ test('parseNumber i slugify', () => {
   assert.strictEqual(parseNumber('45.900 PLN'), 45900);
   assert.strictEqual(slugify('Seria 3'), 'seria-3');
   assert.strictEqual(slugify('Mercedes-Benz'), 'mercedes-benz');
+});
+
+test('akcyza: 1999 cm³ → 4%, 2000 cm³ → 18%', () => {
+  const costs = DEFAULT_SETTINGS.costs.filter((c) => c.id.startsWith('excise'));
+  assert.strictEqual(calculateTotal(10000, { currency: 'PLN', engineCc: 1999, costs, rates }).totalPln, 10400);
+  assert.strictEqual(calculateTotal(10000, { currency: 'PLN', engineCc: 2000, costs, rates }).totalPln, 11800);
+});
+
+test('transport w CH: km × 2 przejazdy × 2 CHF, liczony przed cłem i VAT', () => {
+  const costs = [
+    { name: 'Transport CH', type: 'distance', ratePerKm: 2, currency: 'CHF', trips: 2 },
+    { name: 'VAT', type: 'percent', pct: 23, base: 'running' },
+  ];
+  const r = calculateTotal(10000, { currency: 'CHF', distanceKm: 100, costs, rates });
+  // 100 km × 2 × 2 CHF = 400 CHF = 1800 PLN; (45000 + 1800) × 1.23 = 57564
+  assert.strictEqual(r.items[0].amountPln, 1800);
+  assert.strictEqual(r.totalPln, 57564);
+  const missing = calculateTotal(10000, { currency: 'CHF', costs, rates });
+  assert.strictEqual(missing.items[0].missing, true);
+});
+
+test('sekrety nie wracają do przeglądarki, maska nie nadpisuje hasła', () => {
+  const { saveSettings, publicSettings, getSettings, MASK } = require('../src/settings');
+  saveSettings({ auctionSite: { username: 'jan', password: 'tajne123' } });
+  assert.strictEqual(publicSettings().auctionSite.password, MASK);
+  saveSettings({ auctionSite: { username: 'jan', password: MASK } });
+  assert.strictEqual(getSettings().auctionSite.password, 'tajne123');
+});
+
+test('logowanie formularzem i pobranie strony aukcji z sesją', async () => {
+  const http = require('http');
+  const { refreshAuction, resetSession } = require('../src/auctions');
+  const server = http.createServer((req, res) => {
+    const loggedIn = (req.headers.cookie || '').includes('sid=ok');
+    if (req.url === '/login' && req.method === 'GET') {
+      res.setHeader('Set-Cookie', 'pre=1; Path=/');
+      return res.end('<form action="/do-login" method="post"><input type="hidden" name="csrf" value="xyz"><input name="email"><input type="password" name="pass"><button>Login</button></form>');
+    }
+    if (req.url === '/do-login') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      return req.on('end', () => {
+        const p = new URLSearchParams(body);
+        if (p.get('email') === 'jan@x.ch' && p.get('pass') === 'pw' && p.get('csrf') === 'xyz' && req.headers.cookie.includes('pre=1')) {
+          res.writeHead(302, { Location: '/konto', 'Set-Cookie': 'sid=ok; Path=/; HttpOnly' });
+          return res.end();
+        }
+        res.end('<input type="password">');
+      });
+    }
+    if (req.url === '/konto') return res.end('Witaj');
+    if (req.url === '/auction/1') {
+      if (!loggedIn) return res.end('<form><input name="email"><input type="password" name="pass"></form>');
+      return res.end('<div class="bid">CHF 8\'900</div><div class="seller">Seestrasse 5, 8800 Thalwil</div>');
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  await new Promise((r) => server.listen(0, r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    resetSession();
+    const site = { loginUrl: `${base}/login`, username: 'jan@x.ch', password: 'pw', priceSelector: '.bid', sellerAddressSelector: '.seller' };
+    const data = await refreshAuction({ url: `${base}/auction/1` }, site);
+    assert.strictEqual(data.price, 8900);
+    assert.strictEqual(data.sellerAddress, 'Seestrasse 5, 8800 Thalwil');
+    resetSession();
+    await assert.rejects(refreshAuction({ url: `${base}/auction/1` }, { ...site, password: 'zle' }), /Logowanie nieudane/);
+  } finally {
+    server.close();
+  }
 });
