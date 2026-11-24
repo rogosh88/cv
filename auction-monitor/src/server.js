@@ -8,6 +8,44 @@ const { resetSession, login, sessionStatus } = require('./auctions');
 const { rates } = require('./fx');
 const { evaluateDeal } = require('./costs');
 const monitor = require('./monitor');
+const { parseBestCarPriceText } = require('./sites/bestcarprice');
+
+/** Tworzy lub aktualizuje aukcję z tekstu strony. Dopasowanie po numerze ogłoszenia lub adresie URL. */
+async function importText({ text, url }) {
+  if (!text || String(text).length < 30) throw new Error('Brak tekstu strony');
+  // Skrót iPhone wysyła "adres\ntekst strony"
+  const firstLine = String(text).split('\n', 1)[0].trim();
+  if (!url && /^https?:\/\/\S+$/.test(firstLine)) {
+    url = firstLine;
+    text = String(text).slice(firstLine.length + 1);
+  }
+  const parsed = parseBestCarPriceText(text, url);
+  if (!parsed.make && !parsed.currentPrice) throw new Error('Nie rozpoznano danych aukcji – otwórz stronę szczegółów aukcji (Detail)');
+  const list = store.listAuctions();
+  const existing = list.find((a) => (parsed.externalId && a.externalId === parsed.externalId) || (parsed.url && a.url === parsed.url));
+  const now = new Date().toISOString();
+  let auction;
+  if (existing) {
+    auction = { ...existing };
+    // Aktualizujemy dane ze strony, ale nie nadpisujemy pól uzupełnionych ręcznie (pojemność, koszt naprawy…)
+    for (const [k, v] of Object.entries(parsed)) {
+      if (['currentPrice', 'endsAt', 'myBid', 'conditionNotes', 'url'].includes(k) || existing[k] == null || existing[k] === '') auction[k] = v;
+    }
+    if (parsed.currentPrice != null && parsed.currentPrice !== existing.currentPrice) auction.priceUpdatedAt = now;
+    if (parsed.endsAt && parsed.endsAt !== existing.endsAt && monitor.minutesLeft(auction) > getSettings().checkMinutesBeforeEnd) {
+      auction.checkDoneAt = null;
+      auction.reminderDoneAt = null;
+      auction.status = 'active';
+    }
+  } else {
+    if (!parsed.endsAt) throw new Error('Nie znaleziono daty zakończenia aukcji („Inserat läuft bis”)');
+    auction = { id: store.id(), status: 'active', createdAt: now, priceUpdatedAt: now, autoRefresh: false, ...parsed };
+  }
+  auction.lastImportAt = now;
+  await monitor.evaluate(auction, getSettings());
+  store.upsertAuction(auction);
+  return { created: !existing, auction };
+}
 const { notify, getVapid } = require('./notify');
 
 const app = express();
@@ -25,6 +63,36 @@ function auth(req, res, next) {
 }
 
 app.get('/api/health', (req, res) => res.json({ ok: true, passwordRequired: !!PASSWORD }));
+
+// ---- Import tekstu strony aukcji (skrót iPhone / zakładka w przeglądarce) ----
+// Przyjmuje JSON lub text/plain (zakładka wysyła text/plain, żeby uniknąć blokady CORS). Hasło w nagłówku lub w treści.
+app.use('/api/import-text', (req, res, next) => {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, x-app-password');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+app.post(
+  '/api/import-text',
+  express.text({ type: 'text/plain', limit: '2mb' }),
+  (req, res, next) => {
+    if (typeof req.body === 'string') {
+      try {
+        req.body = JSON.parse(req.body);
+      } catch {
+        req.body = { text: req.body };
+      }
+    }
+    if (req.body?.password && !req.get('x-app-password')) req.headers['x-app-password'] = req.body.password;
+    next();
+  },
+  auth,
+  (req, res) =>
+    Promise.resolve(importText(req.body || {}))
+      .then((r) => res.json(r))
+      .catch((err) => res.status(400).json({ error: err.message }))
+);
+
 app.use('/api', auth);
 
 const wrap = (fn) => (req, res) =>
@@ -71,8 +139,8 @@ app.post(
 );
 
 // ---- Aukcje ----
-const EDITABLE = ['title', 'make', 'model', 'year', 'mileageKm', 'fuel', 'engineCc', 'url', 'currency', 'currentPrice', 'endsAt', 'notes', 'otomotoUrl', 'olxQuery', 'fbQuery', 'manualPrices', 'marketValueOverridePln', 'autoRefresh', 'status', 'sellerAddress', 'distanceKmOverride'];
-const NUMERIC = ['year', 'mileageKm', 'engineCc', 'currentPrice', 'marketValueOverridePln', 'distanceKmOverride'];
+const EDITABLE = ['repairCostPln', 'externalId', 'source', 'sellerName', 'vin', 'conditionNotes', 'powerKw', 'myBid', 'title', 'make', 'model', 'year', 'mileageKm', 'fuel', 'engineCc', 'url', 'currency', 'currentPrice', 'endsAt', 'notes', 'otomotoUrl', 'olxQuery', 'fbQuery', 'manualPrices', 'marketValueOverridePln', 'autoRefresh', 'status', 'sellerAddress', 'distanceKmOverride'];
+const NUMERIC = ['repairCostPln', 'powerKw', 'myBid', 'year', 'mileageKm', 'engineCc', 'currentPrice', 'marketValueOverridePln', 'distanceKmOverride'];
 
 function sanitize(body) {
   const out = {};
@@ -173,6 +241,9 @@ app.post(
     res.json(auction);
   })
 );
+
+// Podgląd: rozpoznanie danych z tekstu bez zapisu (formularz „Wklej tekst aukcji”)
+app.post('/api/parse-text', (req, res) => res.json(parseBestCarPriceText(req.body?.text, req.body?.url)));
 
 app.get('/api/alerts', (req, res) => res.json(store.listAlerts()));
 

@@ -27,6 +27,11 @@ function calculateTotal(price, { currency = 'CHF', engineCc, distanceKm, costs, 
     let amountPln = 0;
     let note;
     let missing = false;
+    const hasCcCondition = (item.engineCcMin != null && item.engineCcMin !== '') || (item.engineCcMax != null && item.engineCcMax !== '');
+    if (hasCcCondition && !(Number(engineCc) > 0)) {
+      note = 'pojemność nieznana – przyjęto wariant wyższy';
+      missing = true;
+    }
     if (item.type === 'distance') {
       const trips = Number(item.trips) || 1;
       if (Number(distanceKm) > 0) {

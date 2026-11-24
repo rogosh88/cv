@@ -34,6 +34,13 @@
     <!-- DODAJ / EDYTUJ -->
     <section id="view-add" class="view">
       <h2 id="form-title">Dodaj aukcję</h2>
+      <div class="card form" id="paste-card">
+        <h3>Import z bestcarprice</h3>
+        <p class="muted small">Najszybciej: skrót „Wyślij do monitora” w Safari (instrukcja w Ustawieniach). Albo skopiuj cały tekst strony szczegółów aukcji i wklej poniżej.</p>
+        <label>Tekst strony aukcji<textarea id="paste-text" rows="3" placeholder="MERCEDES-BENZ E 220 d&#10;Inseratnummer: …&#10;Inserat läuft bis …"></textarea></label>
+        <label>Link do aukcji (opcjonalnie)<input id="paste-url" type="url" /></label>
+        <button type="button" class="ghost" id="paste-parse">Rozpoznaj i uzupełnij formularz</button>
+      </div>
       <form id="auction-form" class="card form">
         <input type="hidden" name="id" />
         <label>Link do aukcji<input name="url" type="url" placeholder="https://…" /></label>
@@ -51,7 +58,7 @@
               <option value="">—</option><option>benzyna</option><option>diesel</option><option>hybryda</option><option>elektryczny</option><option>lpg</option>
             </select>
           </label>
-          <label>Pojemność (cm³)<input name="engineCc" type="number" inputmode="numeric" placeholder="1995" /></label>
+          <label>Pojemność (cm³) – wpisz, strona jej nie podaje<input name="engineCc" type="number" inputmode="numeric" placeholder="1950" /></label>
         </div>
         <div class="row">
           <label>Aktualna cena*<input name="currentPrice" type="number" inputmode="decimal" required /></label>
@@ -59,6 +66,7 @@
             <select name="currency"><option>CHF</option><option>EUR</option><option>PLN</option></select>
           </label>
         </div>
+        <label>Szacowany koszt naprawy (PLN) – auta z aukcji są często uszkodzone, a rynek w PL porównujemy z autami sprawnymi<input name="repairCostPln" type="number" inputmode="numeric" placeholder="np. 8000" /></label>
         <label>Adres sprzedającego (do wyliczenia transportu w CH)<input name="sellerAddress" placeholder="Bahnhofstrasse 1, 8001 Zürich" /></label>
         <label>Koniec aukcji* (czas lokalny)<input name="endsAt" type="datetime-local" required /></label>
         <label>Tytuł (opcjonalnie)<input name="title" placeholder="np. BMW 320d Touring M-Pakiet" /></label>
@@ -200,6 +208,23 @@
           </div>
           <button type="button" class="ghost" id="test-notify">Wyślij testowe powiadomienie</button>
           <p id="notify-report" class="muted small"></p>
+        </div>
+
+        <div class="card">
+          <h3>Skrót na iPhonie: „Wyślij do monitora”</h3>
+          <p class="muted small">Na stronie szczegółów aukcji w <b>Safari</b> stukasz Udostępnij → „Wyślij do monitora”, a aukcja dodaje się sama (albo aktualizuje cenę, gdy już jest). Utwórz skrót raz w aplikacji <b>Skróty</b>:</p>
+          <ol class="small steps">
+            <li>Skróty → <b>+</b> → ⓘ (na dole) → włącz <b>„Pokaż w arkuszu udostępniania”</b>, typ: <b>Strony Safari</b>.</li>
+            <li>Dodaj akcję <b>„Wykonaj JavaScript na stronie”</b> i wklej kod (przycisk niżej).</li>
+            <li>Dodaj akcję <b>„Pobierz zawartość URL”</b>: adres poniżej, metoda <b>POST</b>, nagłówek <code>x-app-password</code> = Twoje hasło do aplikacji, treść <b>JSON</b>: pole <code>text</code> = „Wynik JavaScript”.</li>
+            <li>Dodaj akcję <b>„Pokaż wynik”</b>. Nazwij skrót „Wyślij do monitora”.</li>
+          </ol>
+          <label>Adres dla skrótu<input id="shortcut-url" readonly /></label>
+          <label>Kod JavaScript<textarea id="shortcut-js" rows="2" readonly>completion(location.href + "\n" + document.body.innerText);</textarea></label>
+          <button type="button" class="ghost" id="copy-js">Kopiuj kod</button>
+          <hr />
+          <p class="muted small">Na komputerze: przeciągnij ten przycisk na pasek zakładek, potem klikaj go na stronie aukcji:</p>
+          <a id="bookmarklet" class="bookmarklet" href="#">📥 Do monitora</a>
         </div>
 
         <div class="actions sticky">

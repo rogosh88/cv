@@ -29,7 +29,10 @@ async function updatePrice(auction, settings) {
   if (!auction.url || auction.autoRefresh === false) return auction;
   try {
     const data = await refreshAuction(auction, settings.auctionSite);
-    if (data.price != null) auction.currentPrice = data.price;
+    if (data.price != null) {
+      if (data.price !== auction.currentPrice) auction.priceUpdatedAt = new Date().toISOString();
+      auction.currentPrice = data.price;
+    }
     if (data.endsAt) auction.endsAt = data.endsAt;
     if (data.currency) auction.currency = data.currency.toUpperCase();
     if (data.sellerAddress && !auction.sellerAddress) auction.sellerAddress = data.sellerAddress;
@@ -66,7 +69,7 @@ async function evaluate(auction, settings) {
       currency: auction.currency || 'CHF',
       engineCc: auction.engineCc,
       distanceKm: auction.distanceKmOverride || auction.route?.km,
-      costs: settings.costs,
+      costs: auction.repairCostPln > 0 ? [...settings.costs, { name: 'Naprawa (szacunek)', type: 'fixed', amount: auction.repairCostPln, currency: 'PLN' }] : settings.costs,
       rates: fx,
       marketValuePln: auction.marketValueOverridePln || auction.market?.valuePln,
       thresholdPct: settings.thresholdPct,
@@ -75,6 +78,16 @@ async function evaluate(auction, settings) {
     at: new Date().toISOString(),
   };
   return auction;
+}
+
+/** Informacja o wieku ceny, gdy nie jest świeża (np. aktualizowana ręcznie / skrótem) */
+function priceAge(a) {
+  const t = a.priceUpdatedAt || a.lastFetchAt || a.createdAt;
+  if (!t) return '';
+  const min = (Date.now() - new Date(t).getTime()) / MIN;
+  if (min < 15) return '';
+  const time = new Date(t).toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Warsaw' });
+  return ` – cena z ${time}, sprawdź aktualną!`;
 }
 
 function carLabel(a) {
@@ -87,7 +100,9 @@ function dealMessage(auction, settings, kind) {
   const cur = auction.currency || 'CHF';
   const lines = [
     `${carLabel(auction)}${auction.mileageKm ? `, ${fmt(auction.mileageKm)} km` : ''}`,
-    `Cena teraz: ${fmt(auction.currentPrice)} ${cur} (≈ ${fmt(e.pricePln)} PLN)`,
+    `Cena: ${fmt(auction.currentPrice)} ${cur} (≈ ${fmt(e.pricePln)} PLN)${priceAge(auction)}`,
+    auction.repairCostPln ? `W tym naprawa: ${fmt(auction.repairCostPln)} PLN` : '',
+    !(auction.engineCc > 0) ? 'Uwaga: pojemność nieznana – przyjęto wyższą akcyzę' : '',
     `Koszt w Polsce: ${fmt(e.totalPln)} PLN`,
     auction.sellerAddress ? `Sprzedający: ${auction.sellerAddress}${auction.route?.km ? ` (${fmt(auction.route.km)} km)` : ''}` : '',
     `Wartość rynkowa PL: ${fmt(e.marketValuePln)} PLN${auction.market?.stats?.count ? ` (${auction.market.stats.count} ogł.)` : ''}`,

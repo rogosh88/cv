@@ -101,7 +101,10 @@ function auctionCard(a) {
     ${a.checkResult ? `<div class="small muted">Sprawdzono ${a.checkResult.minutesLeft} min przed końcem: ${a.checkResult.isDeal ? '✅ okazja – wysłano powiadomienie' : `${a.checkResult.discountPct ?? '—'}% – bez powiadomienia`}</div>` : ''}
     ${a.sellerAddress ? `<div class="small muted">📍 ${esc(a.sellerAddress)}${a.distanceKmOverride ? ` · ${fmt(a.distanceKmOverride)} km (ręcznie)` : a.route?.km ? ` · ${fmt(a.route.km)} km od garażu (${esc(a.route.method)})` : ''}</div>` : ''}
     ${a.route?.error && !a.distanceKmOverride ? `<div class="error">Odległość: ${esc(a.route.error)}</div>` : ''}
-    ${(e.items || []).some((i) => i.missing) ? '<div class="error">Brak odległości do sprzedającego – koszt transportu w CH = 0. Uzupełnij adres sprzedającego i garażu.</div>' : ''}
+    ${(e.items || []).some((i) => i.missing && /odległości/.test(i.note)) ? '<div class="error">Brak odległości do sprzedającego – koszt transportu w CH = 0. Uzupełnij adres sprzedającego i garażu.</div>' : ''}
+    ${!(a.engineCc > 0) ? '<div class="warn">⚠️ Pojemność nieznana – przyjęto wyższą akcyzę. Wpisz pojemność (Edytuj).</div>' : ''}
+    ${a.repairCostPln ? `<div class="small muted">🔧 Naprawa (szacunek): ${fmt(a.repairCostPln)} PLN</div>` : a.conditionNotes ? '<div class="warn">⚠️ Auto ma uwagi o stanie – uzupełnij szacowany koszt naprawy (Edytuj).</div>' : ''}
+    ${a.priceUpdatedAt ? `<div class="small muted">Cena z ${new Date(a.priceUpdatedAt).toLocaleString('pl-PL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${a.myBid ? ` · Twoja oferta: ${fmt(a.myBid)} ${esc(cur)}` : ''}</div>` : ''}
     ${a.lastFetchError ? `<div class="error">Strona aukcji: ${esc(a.lastFetchError)}</div>` : ''}
     ${srcInfo ? `<div class="small muted">${srcInfo}</div>` : !a.marketValueOverridePln ? '<div class="small muted">Wycena rynkowa jeszcze nie pobrana.</div>' : ''}
     <div class="links">${links.join('')}</div>
@@ -110,6 +113,9 @@ function auctionCard(a) {
       ${breakdownTable(e)}
       ${m?.stats?.count ? `<p class="small muted">Rynek: min ${fmt(m.stats.min)} · Q1 ${fmt(m.stats.p25)} · mediana ${fmt(m.stats.median)} · Q3 ${fmt(m.stats.p75)} · max ${fmt(m.stats.max)} PLN</p>` : ''}
       ${m?.sample?.length ? `<ul class="sample">${m.sample.map((l) => `<li>${fmt(l.pricePln)} PLN – ${l.url ? `<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title || l.source)}</a>` : esc(l.title)} <span class="muted">(${esc(l.source)}${l.year ? ', ' + l.year : ''}${l.mileageKm ? ', ' + fmt(l.mileageKm) + ' km' : ''})</span></li>`).join('')}</ul>` : ''}
+      ${a.sellerName ? `<p class="small"><b>Sprzedający:</b> ${esc(a.sellerName)}</p>` : ''}
+      ${a.conditionNotes ? `<p class="small"><b>Stan:</b> ${esc(a.conditionNotes)}</p>` : ''}
+      ${a.vin ? `<p class="small muted">VIN: ${esc(a.vin)}</p>` : ''}
       ${a.notes ? `<p class="small">${esc(a.notes)}</p>` : ''}
     </details>
     <div class="card-actions">
@@ -198,6 +204,9 @@ function toLocalInput(iso) {
 function resetForm() {
   const f = $('#auction-form');
   f.reset();
+  delete f.dataset.extra;
+  $('#paste-text').value = '';
+  $('#paste-url').value = '';
   f.id.value = '';
   $('#form-title').textContent = 'Dodaj aukcję';
 }
@@ -217,6 +226,27 @@ function fillForm(a) {
 }
 
 $('#form-cancel').addEventListener('click', () => show('auctions'));
+
+$('#paste-parse').addEventListener('click', async () => {
+  const text = $('#paste-text').value;
+  if (text.trim().length < 30) return toast('Wklej cały tekst strony szczegółów aukcji');
+  try {
+    const p = await api('/api/parse-text', { method: 'POST', body: { text, url: $('#paste-url').value } });
+    if (!p.make && !p.currentPrice) throw new Error('Nie rozpoznano danych – skopiuj tekst ze strony szczegółów (Detail)');
+    const f = $('#auction-form');
+    for (const [k, v] of Object.entries(p)) {
+      const el = f.elements[k];
+      if (!el || v == null) continue;
+      el.value = k === 'endsAt' ? toLocalInput(v) : v;
+    }
+    if (p.conditionNotes) f.elements.notes.value = p.conditionNotes;
+    f.dataset.extra = JSON.stringify({ externalId: p.externalId, sellerName: p.sellerName, vin: p.vin, powerKw: p.powerKw, myBid: p.myBid, conditionNotes: p.conditionNotes, source: p.source });
+    toast('Uzupełniono – sprawdź pojemność i koszt naprawy, potem Zapisz', 4000);
+    f.elements.engineCc.focus();
+  } catch (err) {
+    toast(err.message, 4000);
+  }
+});
 $('#auction-form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const f = ev.target;
@@ -226,6 +256,7 @@ $('#auction-form').addEventListener('submit', async (ev) => {
     body[el.name] = el.type === 'checkbox' ? el.checked : el.value;
   }
   body.endsAt = new Date(body.endsAt).toISOString();
+  if (f.dataset.extra) Object.assign(body, JSON.parse(f.dataset.extra));
   try {
     const id = f.id.value;
     const saved = await api(id ? `/api/auctions/${id}` : '/api/auctions', { method: id ? 'PUT' : 'POST', body });
@@ -400,12 +431,35 @@ $('#enable-push').addEventListener('click', async () => {
   }
 });
 
+// ---------- Skrót iPhone / zakładka ----------
+function setupShortcut() {
+  const endpoint = `${location.origin}/api/import-text`;
+  $('#shortcut-url').value = endpoint;
+  const pw = localStorage.getItem('pw') || '';
+  // Zakładka: wysyła tekst strony jako text/plain (bez blokady CORS), hasło w treści
+  const code = `(function(){fetch(${JSON.stringify(endpoint)},{method:'POST',headers:{'Content-Type':'text/plain'},body:JSON.stringify({url:location.href,text:document.body.innerText,password:${JSON.stringify(pw)}})}).then(function(r){return r.json()}).then(function(j){alert(j.error?'Błąd: '+j.error:(j.created?'Dodano: ':'Zaktualizowano: ')+(j.auction.title||'')+' – '+j.auction.currentPrice+' CHF')}).catch(function(e){alert('Błąd: '+e)})})()`;
+  $('#bookmarklet').href = `javascript:${encodeURIComponent(code)}`;
+}
+$('#bookmarklet').addEventListener('click', (e) => {
+  e.preventDefault();
+  toast('Przeciągnij ten przycisk na pasek zakładek');
+});
+$('#copy-js').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#shortcut-js').value);
+    toast('Skopiowano kod');
+  } catch {
+    $('#shortcut-js').select();
+  }
+});
+
 // ---------- Start ----------
 async function init() {
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
   try {
     settings = await api('/api/settings');
     renderSettings();
+    setupShortcut();
     await loadAuctions();
     const fx = await api('/api/fx');
     $('#fx').textContent = `CHF ${fx.CHF.toFixed(4)} · EUR ${fx.EUR.toFixed(4)}`;

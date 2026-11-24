@@ -83,12 +83,25 @@ Zmienne środowiskowe: `PORT`, `DATA_DIR`, `APP_PASSWORD`, opcjonalnie `VAPID_PU
 3. Alternatywnie / dodatkowo: **Telegram** (bot z @BotFather + chat ID) lub **ntfy** (aplikacja ntfy, wymyśl długi losowy temat).
    Przycisk *Wyślij testowe powiadomienie* sprawdza wszystkie kanały.
 
-## Dodawanie aukcji
+## Dodawanie aukcji z bestcarprice.ch
 
-- Ręcznie w zakładce *Dodaj* (marka, model, rok, przebieg, paliwo, pojemność, cena, koniec aukcji, link).
-- Hurtowo przez API: `POST /api/import` z tablicą obiektów (te same pola) – aukcje z tym samym `url` są aktualizowane.
-- Cena jest odświeżana automatycznie ze strony aukcji (JSON-LD / meta tagi / selektory CSS z ustawień, opcjonalnie z ciasteczkiem sesji),
-  a gdy się nie uda – przycisk *Zmień cenę*.
+**Skrót na iPhonie (zalecane)** – na stronie szczegółów aukcji w Safari: Udostępnij → „Wyślij do monitora”.
+Aukcja dodaje się sama, a ponowne wysłanie aktualizuje cenę (dopasowanie po numerze ogłoszenia).
+Instrukcja utworzenia skrótu jest w aplikacji: *Ustawienia → Skrót na iPhonie*.
+
+**Na komputerze** – przeciągnij przycisk „📥 Do monitora” z ustawień na pasek zakładek i klikaj go na stronie aukcji.
+
+**Ręcznie** – zakładka *Dodaj*: wklej tekst strony aukcji → „Rozpoznaj i uzupełnij formularz”.
+
+Rozpoznawane pola: marka, model, 1. rejestracja, przebieg, paliwo, moc, VIN, aktualna najwyższa oferta,
+Twoja oferta, koniec aukcji („Inserat läuft bis”), sprzedający i adres odbioru (→ odległość od garażu), opis stanu.
+
+Do uzupełnienia ręcznie (strona ich nie podaje):
+- **pojemność silnika** – decyduje o akcyzie 4% / 18%; gdy pusta, przyjmowane jest 18%,
+- **szacowany koszt naprawy** – auta z aukcji są często uszkodzone, a ceny w Polsce pochodzą z ogłoszeń aut sprawnych.
+
+Gdy cena nie była aktualizowana w ostatnich 15 min, powiadomienie zawiera godzinę ceny i prośbę o sprawdzenie aktualnej.
+API: `POST /api/import-text` (`{ text, url }`), `POST /api/import` (pola aukcji w JSON).
 
 ## Ograniczenia
 

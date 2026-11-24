@@ -239,7 +239,7 @@ function parseDate(raw) {
   if (raw == null || raw === '') return null;
   const s = String(raw).trim();
   if (/^\d{10,13}$/.test(s)) return new Date(Number(s) * (s.length === 10 ? 1000 : 1));
-  const ch = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})[ ,]+(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  const ch = s.match(/(\d{1,2})\.(\d{1,2})\.(\d{4})[\s,\-–]+(?:um\s+)?(\d{1,2}):(\d{2})(?::(\d{2}))?/);
   if (ch) {
     // Czas szwajcarski (Europe/Zurich) – ta sama strefa co Polska
     const [, d, m, y, hh, mm, ss] = ch;
