@@ -22,7 +22,7 @@ Domyślne pozycje kosztowe (wszystkie edytowalne w *Ustawienia → Koszty sprowa
 | Pozycja | Domyślnie |
 |---|---|
 | Transport w Szwajcarii | km garaż → sprzedający × 2 (w dwie strony) × 2 CHF/km |
-| Transport CH → PL | 3500 PLN (przykład) |
+| Transport CH → PL | 3500 PLN |
 | Cło | 10% (narastająco) |
 | Akcyza | 4% do 1999 cm³, 18% od 2000 cm³ (narastająco) |
 | VAT | 23% (narastająco) |
